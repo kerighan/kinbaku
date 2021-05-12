@@ -48,7 +48,7 @@ for edge in G.edges:
     print(edge)
 ```
 
-Node keys must imperatively be strings with a maximum length. The maximum length can be changed *before* the graph is created using the _max_key_len_ keyword argument.
+Node keys must imperatively be strings with a maximum length. The maximum length can be set *before* the graph is created using the _max_key_len_ keyword argument.
 
 ## Using custom attributes
 
