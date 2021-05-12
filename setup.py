@@ -1,4 +1,10 @@
 import setuptools
+from Cython.Build import cythonize
+
+
+extensions = [
+    setuptools.Extension("kinbaku/*", ["kinbaku/*.pyx"]),
+]
 
 
 with open("README.md", "r") as f:
@@ -15,6 +21,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/kerighan/kinbaku",
     packages=setuptools.find_packages(),
+    ext_modules=cythonize(extensions),
     include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",
