@@ -313,49 +313,37 @@ class Graph:
     def neighbors(self, key):
         leaf = self.node(key)
         start = self.get_edge_at(leaf.edge_start)
-        return self.edge_dfs(start)
+        yield from self.edge_dfs(start)
 
     @stringify_key
     def predecessors(self, key):
         leaf = self.node(key)
         start = self.get_edge_at(leaf.edge_start)
-        return self.edge_in_dfs(start)
+        yield from self.edge_in_dfs(start)
 
     def edge_dfs(self, edge):
-        if edge.target == 0:
-            this = []
-        elif self.preload:
-            this = [self.cache_id_to_key[edge.target]]
-        else:
-            this = [edge.target]
-
-        # terminal node
-        if edge.out_edge_left == 0 and edge.out_edge_right == 0:
-            return this
+        if edge.target != 0:
+            res = self.cache_id_to_key.get(edge.target)
+            if res is None:
+                res = self.get_node_at(edge.target_position).key
+            yield res
 
         if edge.out_edge_left != 0:
-            this += self.edge_dfs(self.get_edge_at(edge.out_edge_left))
+            yield from self.edge_dfs(self.get_edge_at(edge.out_edge_left))
         if edge.out_edge_right != 0:
-            this += self.edge_dfs(self.get_edge_at(edge.out_edge_right))
-        return this
+            yield from self.edge_dfs(self.get_edge_at(edge.out_edge_right))
 
     def edge_in_dfs(self, edge):
-        if edge.target == 0:
-            this = []
-        elif self.preload:
-            this = [self.cache_id_to_key[edge.source]]
-        else:
-            this = [edge.source]
-
-        # terminal node
-        if edge.in_edge_left == 0 and edge.in_edge_right == 0:
-            return this
+        if edge.target != 0:
+            res = self.cache_id_to_key.get(edge.source)
+            if res is None:
+                res = self.get_node_at(edge.source_position).key
+            yield res
 
         if edge.in_edge_left != 0:
-            this += self.edge_in_dfs(self.get_edge_at(edge.in_edge_left))
+            yield from self.edge_in_dfs(self.get_edge_at(edge.in_edge_left))
         if edge.in_edge_right != 0:
-            this += self.edge_in_dfs(self.get_edge_at(edge.in_edge_right))
-        return this
+            yield from self.edge_in_dfs(self.get_edge_at(edge.in_edge_right))
 
     @stringify_key
     def degree(self, key):
@@ -443,6 +431,8 @@ class Graph:
         new_edge = self.edge_class()
         new_edge.source = source.index
         new_edge.target = target_index
+        new_edge.source_position = source.position
+        new_edge.target_position = target.position
         new_edge.hash = edge_hash
         self.parse_attributes(new_edge, attr)
 
@@ -538,7 +528,7 @@ class Graph:
             # create self-loop edge for new nodes
             edge = self.edge_class()
             edge.source = leaf.index
-            edge.target = 0
+            # edge.source_position = leaf.position
             edge.hash = key_hash
             self.set_edge_at(edge, leaf.edge_start)
             self.increment_edge()
@@ -589,6 +579,7 @@ class Graph:
                 node.left = leaf.left
                 node.right = leaf.right
                 node.edge_start = leaf.edge_start
+                node.position = leaf.position
                 if node == leaf:
                     return leaf
                 self.set_node_at(node, position)

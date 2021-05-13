@@ -15,6 +15,8 @@ class Edge:
     is_node: bool = False
     source: int = 0
     target: int = 0
+    source_position: int = 0
+    target_position: int = 0
     hash: int = 0
     out_edge_left: int = 0
     out_edge_right: int = 0
