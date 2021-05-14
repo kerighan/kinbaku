@@ -46,6 +46,8 @@ class Graph:
         self.cache_id_to_key = {}  # important
         self.cache_key_to_node = CacheDict(cache_len=cache_len)
         self.cache_pos_to_node = CacheDict(cache_len=cache_len)
+        self.edge_tombstone = []
+        self.node_tombstone = []
 
         # custom dataclasses
         if node_class is not None:
@@ -230,15 +232,21 @@ class Graph:
             *self.parse_values(self.header))
         self.map_to_memory()
 
-    def increment_node(self):
+    def increment_node(self, recycled):
         self.header.n_nodes += 1
         self.header.node_id += 1
-        self.header.next_table_position += self.NODE_TO_EDGE_RATIO
+        if recycled:
+            self.header.next_table_position += self.NODE_TO_EDGE_RATIO
         self.expand()
 
-    def increment_edge(self):
+    def increment_edge(self, recycled):
         self.header.n_edges += 1
-        self.header.next_table_position += 1
+        if not recycled:
+            self.header.next_table_position += 1
+        self.expand()
+
+    def decrement_edge(self):
+        self.header.n_edges -= 1
         self.expand()
 
     def cache_node(self, key, node):
@@ -411,8 +419,17 @@ class Graph:
     # Getters
     # =========================================================================
 
-    def get_next_position(self):
-        return self.header.next_table_position
+    def get_next_node_position(self):
+        if len(self.node_tombstone) == 0:
+            return self.header.next_table_position, False
+        return self.node_tombstone.pop(0), True
+
+    def get_next_edge_position(self):
+        if len(self.edge_tombstone) == 0:
+            recycled = False
+            return self.header.next_table_position, recycled
+        recycled = True
+        return self.edge_tombstone.pop(0), recycled
 
     def get_sizes(self):
         data = unpack(self.HEADER_FORMAT, self.mm[:self.HEADER_SIZE])
@@ -521,6 +538,12 @@ class Graph:
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         self.mm[ind:ind+self.EDGE_SIZE] = pack(self.EDGE_FORMAT, *values)
 
+    def erase_edge_at(self, position):
+        ind = position * self.EDGE_SIZE + self.HEADER_SIZE
+        self.mm[ind:ind+self.EDGE_SIZE] = self.EDGE
+        self.edge_tombstone.append(position)
+        self.decrement_edge()
+
     # =========================================================================
     # Create & delete Nodes & Edges
     # =========================================================================
@@ -537,11 +560,11 @@ class Graph:
             leaf.key = key
             leaf.hash = key_hash
             leaf.position = position
-            leaf.edge_start = self.get_next_position()
+            leaf.edge_start, recycled = self.get_next_edge_position()
             self.parse_attributes(leaf, attr)
 
             self.set_node_at(leaf, position)
-            self.increment_node()
+            self.increment_node(False)
 
             # create self-loop edge for new nodes
             edge = self.edge_class()
@@ -549,11 +572,11 @@ class Graph:
             # edge.source_position = leaf.position
             edge.hash = key_hash
             self.set_edge_at(edge, leaf.edge_start)
-            self.increment_edge()
+            self.increment_edge(recycled)
             return leaf
 
         # next node insertion position
-        new_position = self.get_next_position()
+        new_position, node_recycled = self.get_next_node_position()
 
         # new node
         node = self.node_class()
@@ -593,6 +616,8 @@ class Graph:
                     leaf = self.get_node_at(position)
                     continue
             else:  # is equal
+                if node_recycled:
+                    self.node_tombstone.append(new_position)
                 node.index = leaf.index
                 node.left = leaf.left
                 node.right = leaf.right
@@ -604,15 +629,15 @@ class Graph:
                 return node
 
         # update sizes
-        self.increment_node()
+        self.increment_node(node_recycled)
 
         # add new node
-        node.edge_start = self.get_next_position()
+        node.edge_start, recycled = self.get_next_edge_position()
         self.set_node_at(node, new_position)
 
         # add new edge for the node
         self.set_edge_at(edge, node.edge_start)
-        self.increment_edge()
+        self.increment_edge(recycled)
 
         # update the node before: link to left or right tree
         if left:
@@ -658,7 +683,7 @@ class Graph:
         if state == 0:
             return previous_out_edge
 
-        new_edge_position = self.get_next_position()
+        new_edge_position, recycled = self.get_next_edge_position()
         if state == -1:  # must insert left
             previous_out_edge.out_edge_left = new_edge_position
         elif state == 1:  # must insert right
@@ -684,7 +709,7 @@ class Graph:
 
         # add new edge
         self.set_edge_at(new_edge, new_edge_position)
-        self.increment_edge()
+        self.increment_edge(recycled)
         return new_edge
     
     def remove_edge_tree(
@@ -758,7 +783,6 @@ class Graph:
                 setattr(antecedent, edge_right_name, successor_pos)
             self.set_edge_at(antecedent, antecedent_pos)
 
-
     def remove_edge(self, source, target, attr=None, edge_type=0):
         # get source and target nodes
         source = self.node(source)
@@ -784,6 +808,9 @@ class Graph:
             target.edge_start, edge)
         self.remove_edge_tree(
             edge, edge_pos, edge_in_ant, edge_in_ant_pos, state, out=False)
+        
+        # erase edge from file
+        self.erase_edge_at(edge_pos)
 
     def __setitem__(self, key, attr):
         return self.add_node(key, attr)
