@@ -27,6 +27,7 @@ def compare_edge(edge_A, edge_B):
     # edges are equal, return 0
     if (edge_A_hash == edge_B_hash and
         edge_A_source == edge_B_source and
+        edge_A_target == edge_B_target and
         edge_A_type == edge_B_type
     ):
         return 0
@@ -44,8 +45,10 @@ def compare_edge(edge_A, edge_B):
                 return 1
             elif edge_B_type < edge_A_type:
                 return -1
+            elif edge_B_type > edge_A_type:
+                return 1
             else:
-                return 1            
+                return 0            
         elif edge_B_target < edge_A_target:
             # case where targets are equal
             if edge_B_source < edge_A_source:
