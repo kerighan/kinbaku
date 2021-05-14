@@ -13,26 +13,53 @@ def compare_nodes(key_hash, key_tuple, leaf):
     return 1
 
 
-def compare_edge(edge, target_index, target_hash, new_edge_type):
-    edge_hash = edge.hash
-    edge_source = edge.source
+def compare_edge(edge_A, edge_B):
+    edge_A_hash = edge_A.hash
+    edge_A_source = edge_A.source
+    edge_A_target = edge_A.target
+    edge_A_type = edge_A.type
 
-    if edge.target == target_index:
+    edge_B_hash = edge_B.hash
+    edge_B_source = edge_B.source
+    edge_B_target = edge_B.target
+    edge_B_type = edge_B.type
+
+    # edges are equal, return 0
+    if (edge_A_hash == edge_B_hash and
+        edge_A_source == edge_B_source and
+        edge_A_type == edge_B_type
+    ):
         return 0
 
-    if target_hash < edge_hash:
+    if edge_B_hash < edge_A_hash:
         return -1
-    elif target_hash == edge_hash:
-        if target_index < edge_source:
-            return -1
-        elif target_index == edge_source:
-            if new_edge_type == edge.type:
-                return 0
-            elif new_edge_type < edge.type:
-                return -1
-            return 1
+    elif edge_B_hash > edge_A_hash:
         return 1
-    return 1
+    else:  # hashes are equal
+        if edge_A_source == edge_B_source:
+            # case where sources are equal
+            if edge_B_target < edge_A_target:
+                return -1
+            elif edge_B_target > edge_A_target:
+                return 1
+            elif edge_B_type < edge_A_type:
+                return -1
+            else:
+                return 1            
+        elif edge_B_target < edge_A_target:
+            # case where targets are equal
+            if edge_B_source < edge_A_source:
+                return -1
+            elif edge_B_source > edge_A_source:
+                return 1
+            elif edge_B_type < edge_A_type:
+                return -1
+            else:
+                return 1
+        elif edge_B_type < edge_A_type:
+            return -1
+        else:
+            return 1
 
 
 def to_string(data):
