@@ -22,7 +22,8 @@ class Graph:
         table_increment=100000,
         preload=False,
         node_class=None,
-        edge_class=None
+        edge_class=None,
+        overwrite=False
     ):
         self.filename = filename
         self.table_increment = table_increment
@@ -65,7 +66,7 @@ class Graph:
         self.init_header_size()
 
         # mmap file
-        self.load_file()
+        self.load_file(overwrite)
 
     # =========================================================================
     # Properties
@@ -83,7 +84,7 @@ class Graph:
     def nodes(self):
         position = 0
         leaf = self.get_node_at(position)
-        yield from self.node_dfs(leaf)
+        yield from self.node_dfs(leaf, as_key=True)
 
     @property
     def edges(self):
@@ -98,7 +99,8 @@ class Graph:
                 position += 1
                 if edge.target == 0:
                     continue
-                yield edge
+
+                yield self.get_keys_from_edge(edge)
 
     # =========================================================================
     # Parsers
@@ -196,8 +198,8 @@ class Graph:
     # File & memory management
     # =========================================================================
 
-    def load_file(self):
-        if not os.path.exists(self.filename):
+    def load_file(self, overwrite):
+        if not os.path.exists(self.filename) or overwrite:
             with open(self.filename, "wb") as f:
                 f.write(self.HEADER)
                 f.write(self.NODE_PLACEHOLDER)
@@ -235,7 +237,7 @@ class Graph:
     def increment_node(self, recycled):
         self.header.n_nodes += 1
         self.header.node_id += 1
-        if recycled:
+        if not recycled:
             self.header.next_table_position += self.NODE_TO_EDGE_RATIO
         self.expand()
 
@@ -253,6 +255,22 @@ class Graph:
         self.cache_key_to_node[key] = node
         self.cache_id_to_key[node.index] = key
         self.cache_pos_to_node[node.position] = node
+
+    def find_tombstones(self):
+        position = 0
+        size = len(pack("?" + self.int_format, 0, 0))
+        while position <= self.header.next_table_position:
+            ind = position * self.EDGE_SIZE + self.HEADER_SIZE
+            is_node, index = unpack("?" + self.int_format,
+                                    self.mm[ind:ind+size])
+            if is_node:
+                if index == 0:
+                    self.node_tombstone.append(position)
+                position += self.NODE_TO_EDGE_RATIO
+            else:
+                if index == 0:
+                    self.edge_tombstone.append(position)
+                position += 1
 
     # =========================================================================
     # Tree traversal
@@ -304,7 +322,7 @@ class Graph:
             else:  # is equal
                 break
         return current_edge, position, state
-    
+
     def find_inorder_successor(self, position, edge, out=True):
         if out:
             edge_right = edge.out_edge_right
@@ -376,18 +394,20 @@ class Graph:
             current_edge, position,
             previous_edge, previous_pos, previous_state)
 
-
-    def node_dfs(self, node):
+    def node_dfs(self, node, as_key=False):
         if node.index != 0:
-            yield node
+            if as_key:
+                yield node.key
+            else:
+                yield node
 
         # store in cache
         self.cache_node(node.key, node)
 
         if node.left != 0:
-            yield from self.node_dfs(self.get_node_at(node.left))
+            yield from self.node_dfs(self.get_node_at(node.left), as_key)
         if node.right != 0:
-            yield from self.node_dfs(self.get_node_at(node.right))
+            yield from self.node_dfs(self.get_node_at(node.right), as_key)
 
     def edge_dfs(self, edge):
         if edge.target != 0:
@@ -414,6 +434,77 @@ class Graph:
             yield from self.edge_in_dfs(self.get_edge_at(edge.in_edge_left))
         if edge.in_edge_right != 0:
             yield from self.edge_in_dfs(self.get_edge_at(edge.in_edge_right))
+
+    def remove_edge_from_tree(
+        self, edge, edge_pos, antecedent, antecedent_pos, state,
+        out=True
+    ):
+        if out:
+            edge_left = edge.out_edge_left
+            edge_right = edge.out_edge_right
+            edge_left_name = "out_edge_left"
+            edge_right_name = "out_edge_right"
+        else:
+            edge_left = edge.in_edge_left
+            edge_right = edge.in_edge_right
+            edge_left_name = "in_edge_left"
+            edge_right_name = "in_edge_right"
+
+        # case 1: edge has no children - just remove link to it
+        if edge_left == 0 and edge_right == 0:
+            if state == -1:
+                setattr(antecedent, edge_left_name, 0)
+            else:
+                setattr(antecedent, edge_right_name, 0)
+            self.set_edge_at(antecedent, antecedent_pos)
+        # case 2: edge has no left child or no right child
+        elif edge_left == 0:
+            if state == -1:
+                setattr(antecedent, edge_left_name, edge_right)
+            else:
+                setattr(antecedent, edge_right_name, edge_right)
+            self.set_edge_at(antecedent, antecedent_pos)
+        elif edge_right == 0:
+            if state == -1:
+                setattr(antecedent, edge_left_name, edge_left)
+            else:
+                setattr(antecedent, edge_right_name, edge_left)
+            self.set_edge_at(antecedent, antecedent_pos)
+        # case 3: edge has two children
+        else:
+            successor, successor_pos, successor_ant, successor_ant_pos =    \
+                self.find_inorder_successor(edge_pos, edge, out=out)
+
+            # if successor has no children
+            if getattr(successor, edge_right_name) == 0:
+                # replace successor's links
+                setattr(successor, edge_left_name, edge_left)
+                # avoid self-loops
+                if edge_right != successor_pos:
+                    setattr(successor, edge_right_name, edge_right)
+                self.set_edge_at(successor, successor_pos)
+                # replace successor antecedent's link
+                if successor_ant_pos != edge_pos:
+                    setattr(successor_ant, edge_left_name, 0)
+                    self.set_edge_at(successor_ant, successor_ant_pos)
+            # if successor antecedent is the original edge
+            elif successor_ant_pos == edge_pos:
+                # replace successor's links
+                setattr(successor, edge_left_name, edge_left)
+                self.set_edge_at(successor, successor_pos)
+            else:
+                successor_right = getattr(successor, edge_right_name)
+                setattr(successor_ant, edge_left_name, successor_right)
+                self.set_edge_at(successor_ant, successor_ant_pos)
+                setattr(successor, edge_right_name, edge_right)
+                setattr(successor, edge_left_name, edge_left)
+                self.set_edge_at(successor, successor_pos)
+
+            if state == -1:
+                setattr(antecedent, edge_left_name, successor_pos)
+            else:
+                setattr(antecedent, edge_right_name, successor_pos)
+            self.set_edge_at(antecedent, antecedent_pos)
 
     # =========================================================================
     # Getters
@@ -470,6 +561,20 @@ class Graph:
     def get_edge_hash(self, source, target, edge_type):
         return self.hash_func(
             str(source.hash) + "_" + str(edge_type) + "_" + str(target.hash))
+
+    def get_keys_from_edge(self, edge):
+        src = edge.source
+        src_pos = edge.source_position
+        u = self.cache_id_to_key.get(src)
+        if u is None:
+            u = self.get_node_at(src_pos).key
+
+        tgt = edge.target
+        tgt_pos = edge.target_position
+        v = self.cache_id_to_key.get(tgt)
+        if v is None:
+            v = self.get_node_at(tgt_pos).key
+        return u, v
 
     @stringify_key
     def neighbors(self, key):
@@ -678,7 +783,7 @@ class Graph:
         # OUT direction
         previous_out_edge, previous_out_pos, state = self.find_edge_out_pos(
             source.edge_start, new_edge)
-        
+
         # edge already exists
         if state == 0:
             return previous_out_edge
@@ -704,84 +809,13 @@ class Graph:
             print(previous_in_edge)
             print(new_edge)
             raise ValueError("strange")
-        # add IN edge
+        # update previous in-edge
         self.set_edge_at(previous_in_edge, previous_in_pos)
 
         # add new edge
         self.set_edge_at(new_edge, new_edge_position)
         self.increment_edge(recycled)
         return new_edge
-    
-    def remove_edge_tree(
-        self, edge, edge_pos, antecedent, antecedent_pos, state,
-        out=True
-    ):
-        if out:
-            edge_left = edge.out_edge_left
-            edge_right = edge.out_edge_right
-            edge_left_name = "out_edge_left"
-            edge_right_name = "out_edge_right"
-        else:
-            edge_left = edge.in_edge_left
-            edge_right = edge.in_edge_right
-            edge_left_name = "in_edge_left"
-            edge_right_name = "in_edge_right"
-
-        # case 1: edge has no children - just remove link to it
-        if edge_left == 0 and edge_right == 0:
-            if state == -1:
-                setattr(antecedent, edge_left_name, 0)
-            else:
-                setattr(antecedent, edge_right_name, 0)
-            self.set_edge_at(antecedent, antecedent_pos)
-        # case 2: edge has no left child or no right child
-        elif edge_left == 0:
-            if state == -1:
-                setattr(antecedent, edge_left_name, edge_right)
-            else:
-                setattr(antecedent, edge_right_name, edge_right)
-            self.set_edge_at(antecedent, antecedent_pos)
-        elif edge_right == 0:
-            if state == -1:
-                setattr(antecedent, edge_left_name, edge_left)
-            else:
-                setattr(antecedent, edge_right_name, edge_left)
-            self.set_edge_at(antecedent, antecedent_pos)
-        # case 3: edge has two children
-        else:
-            successor, successor_pos, successor_ant, successor_ant_pos =    \
-                self.find_inorder_successor(edge_pos, edge, out=out)
-
-            # if successor has no children
-            if getattr(successor, edge_right_name) == 0:
-                # replace successor's links
-                setattr(successor, edge_left_name, edge_left)
-                # avoid self-loops
-                if edge_right != successor_pos:
-                    setattr(successor, edge_right_name, edge_right)
-                self.set_edge_at(successor, successor_pos)
-                # replace successor antecedent's link
-                if successor_ant_pos != edge_pos:
-                    setattr(successor_ant, edge_left_name, 0)
-                    self.set_edge_at(successor_ant, successor_ant_pos)
-            # if successor antecedent is the original edge
-            elif successor_ant_pos == edge_pos:
-                # replace successor's links
-                setattr(successor, edge_left_name, edge_left)
-                self.set_edge_at(successor, successor_pos)
-            else:                
-                successor_right = getattr(successor, edge_right_name)
-                setattr(successor_ant, edge_left_name, successor_right)
-                self.set_edge_at(successor_ant, successor_ant_pos)
-                setattr(successor, edge_right_name, edge_right)
-                setattr(successor, edge_left_name, edge_left)
-                self.set_edge_at(successor, successor_pos)
-
-            if state == -1:
-                setattr(antecedent, edge_left_name, successor_pos)
-            else:
-                setattr(antecedent, edge_right_name, successor_pos)
-            self.set_edge_at(antecedent, antecedent_pos)
 
     def remove_edge(self, source, target, attr=None, edge_type=0):
         # get source and target nodes
@@ -799,16 +833,16 @@ class Graph:
         # OUT direction
         edge, edge_pos, edge_out_ant, edge_out_ant_pos, state =   \
             self.find_edge_out_antecedent(source.edge_start, edge)
-        self.remove_edge_tree(
+        self.remove_edge_from_tree(
             edge, edge_pos, edge_out_ant, edge_out_ant_pos, state, out=True)
 
         # =====================================================================
         # IN direction
-        _, _, edge_in_ant, edge_in_ant_pos, state = self.find_edge_in_antecedent(
-            target.edge_start, edge)
-        self.remove_edge_tree(
+        _, _, edge_in_ant, edge_in_ant_pos, state = \
+            self.find_edge_in_antecedent(target.edge_start, edge)
+        self.remove_edge_from_tree(
             edge, edge_pos, edge_in_ant, edge_in_ant_pos, state, out=False)
-        
+
         # erase edge from file
         self.erase_edge_at(edge_pos)
 

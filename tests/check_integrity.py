@@ -1,10 +1,30 @@
-from .utils import EdgeList
 import kinbaku as kn
+import networkx as nx
 from tqdm import tqdm
 import random
-import networkx as nx
-import mmh3
-import os
+
+
+# utility class for checkups
+class EdgeList(object):
+    def __init__(self):
+        self.item_to_position = {}
+        self.items = []
+
+    def add(self, item):
+        if item in self.item_to_position:
+            return
+        self.items.append(item)
+        self.item_to_position[item] = len(self.items)-1
+
+    def remove(self, item):
+        position = self.item_to_position.pop(item)
+        last_item = self.items.pop()
+        if position != len(self.items):
+            self.items[position] = last_item
+            self.item_to_position[last_item] = position
+
+    def sample(self):
+        return random.choice(self.items)
 
 
 G = kn.Graph("test.db", overwrite=True)
@@ -39,6 +59,12 @@ for _ in tqdm(range(iterations), desc="random edge insertion and deletion"):
             graph.remove_edge(u, v)
             edges.remove((u, v))
 
+# =============================================================================
+# CHECK THAT TOMBSTONES CAN BE FOUND
+del G
+G = kn.Graph("test.db")
+G.find_tombstones()
+assert len(G.edge_tombstone) != 0
 
 # =============================================================================
 # CHECK THAT GRAPHS HAVE SAME NODES AND EDGES
@@ -54,7 +80,7 @@ for node in tqdm(G.nodes, total=G.n_nodes):
     G_neighbors = set(G.neighbors(node))
     graph_neighbors = set(graph.neighbors(node))
     assert G_neighbors == graph_neighbors
-        
+
     G_predecessors = set(G.predecessors(node))
     graph_predecessors = set(graph.predecessors(node))
     assert G_predecessors == graph_predecessors

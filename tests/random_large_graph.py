@@ -1,8 +1,6 @@
 import kinbaku as kn
 from tqdm import tqdm
 import random
-import mmh3
-import os
 
 
 G = kn.Graph("test.db", overwrite=True)
