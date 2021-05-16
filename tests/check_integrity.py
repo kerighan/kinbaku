@@ -27,8 +27,9 @@ class EdgeList(object):
         return random.choice(self.items)
 
 
-G = kn.Graph("test.db", overwrite=True)
-graph = nx.DiGraph()
+# create graphs
+G_kn = kn.Graph("test.db", overwrite=True)
+G_nx = nx.DiGraph()
 
 N = 10000
 iterations = 10000
@@ -36,12 +37,11 @@ edges = EdgeList()  # not efficient
 
 # =============================================================================
 # ADD AND REMOVE EDGES RANDOMLY
-
 # probability of a deletion happening
 p_del = .3
 for _ in tqdm(range(iterations), desc="random edge insertion and deletion"):
-    assert len(graph.edges) == G.n_edges
-    assert len(graph.nodes) == G.n_nodes
+    assert len(G_nx.edges) == G_kn.n_edges
+    assert len(G_nx.nodes) == G_kn.n_nodes
 
     draw = random.random()
     if draw > p_del:
@@ -50,37 +50,37 @@ for _ in tqdm(range(iterations), desc="random edge insertion and deletion"):
         v = str(random.randint(0, N-1))
 
         edges.add((u, v))  # this is the reason of the performance drop
-        G.add_edge(u, v)
-        graph.add_edge(u, v)
+        G_kn.add_edge(u, v)
+        G_nx.add_edge(u, v)
     else:
-        if len(graph.edges) >= 1:
+        if len(G_nx.edges) >= 1:
             u, v = edges.sample()
-            G.remove_edge(u, v)
-            graph.remove_edge(u, v)
+            G_kn.remove_edge(u, v)
+            G_nx.remove_edge(u, v)
             edges.remove((u, v))
 
 # =============================================================================
 # CHECK THAT TOMBSTONES CAN BE FOUND
-del G
-G = kn.Graph("test.db")
-G.find_tombstones()
-assert len(G.edge_tombstone) != 0
+del G_kn
+G_kn = kn.Graph("test.db")
+G_kn.find_tombstones()
+assert len(G_kn.edge_tombstone) != 0
 
 # =============================================================================
 # CHECK THAT GRAPHS HAVE SAME NODES AND EDGES
 
 # assert that graphs have the same nodes
-assert set(G.nodes) == set(graph.nodes)
-assert set(G.edges) == set(graph.edges)
+assert set(G_kn.nodes) == set(G_nx.nodes)
+assert set(G_kn.edges) == set(G_nx.edges)
 
 # =============================================================================
 # CHECK THAT GRAPHS RETURN SAME NEIGHBORS AND PREDECESSORS
 
-for node in tqdm(G.nodes, total=G.n_nodes):
-    G_neighbors = set(G.neighbors(node))
-    graph_neighbors = set(graph.neighbors(node))
+for node in tqdm(G_kn.nodes, total=G_kn.n_nodes):
+    G_neighbors = set(G_kn.neighbors(node))
+    graph_neighbors = set(G_nx.neighbors(node))
     assert G_neighbors == graph_neighbors
 
-    G_predecessors = set(G.predecessors(node))
-    graph_predecessors = set(graph.predecessors(node))
+    G_predecessors = set(G_kn.predecessors(node))
+    graph_predecessors = set(G_nx.predecessors(node))
     assert G_predecessors == graph_predecessors

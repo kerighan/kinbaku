@@ -1,7 +1,7 @@
 from .utils import CacheDict, compare_nodes, compare_edge
 from .utils import to_string, stringify_key
 from .structure import Edge, Node, Header
-from struct import unpack, pack
+from struct import unpack, pack, error
 import math
 import mmap
 import os
@@ -23,10 +23,12 @@ class Graph:
         preload=False,
         node_class=None,
         edge_class=None,
-        overwrite=False
+        overwrite=False,
+        flag="w"
     ):
         self.filename = filename
         self.table_increment = table_increment
+        self.flag = flag
 
         if hash_func is None:
             from cityhash import CityHash32
@@ -44,6 +46,7 @@ class Graph:
 
         # initialize cache
         self.preload = preload
+        self.cache_len = cache_len
         self.cache_id_to_key = {}  # important
         self.cache_key_to_node = CacheDict(cache_len=cache_len)
         self.cache_pos_to_node = CacheDict(cache_len=cache_len)
@@ -215,10 +218,16 @@ class Graph:
 
     def map_to_memory(self):
         with open(self.filename, "r+b") as f:
-            self.mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_WRITE)
+            if self.flag == "w":
+                self.mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_WRITE)
+            else:
+                self.mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
     def expand(self):
-        if self.header.next_table_position <= self.header.table_size - 4:
+        if (
+            self.header.next_table_position <=
+            self.header.table_size - .1 * self.table_increment
+        ):
             self.mm[:self.HEADER_SIZE] = pack(
                 self.HEADER_FORMAT,
                 *self.parse_values(self.header))
@@ -255,6 +264,12 @@ class Graph:
         self.cache_key_to_node[key] = node
         self.cache_id_to_key[node.index] = key
         self.cache_pos_to_node[node.position] = node
+
+    def empty_cache(self):
+        self.cache_id_to_key = {}  # important
+        self.cache_key_to_node = CacheDict(cache_len=self.cache_len)
+        self.cache_pos_to_node = CacheDict(cache_len=self.cache_len)
+        self.get_sizes()
 
     def find_tombstones(self):
         position = 0
@@ -532,7 +547,11 @@ class Graph:
             return node
 
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
-        data = unpack(self.NODE_FORMAT, self.mm[ind:ind+self.NODE_SIZE])
+        try:
+            data = unpack(self.NODE_FORMAT, self.mm[ind:ind+self.NODE_SIZE])
+        except error:
+            self.map_to_memory()
+            data = unpack(self.NODE_FORMAT, self.mm[ind:ind+self.NODE_SIZE])
 
         i = 0
         res = []
@@ -600,6 +619,10 @@ class Graph:
 
     @stringify_key
     def node(self, key):
+        # if key is already a node object
+        if isinstance(key, self.node_class):
+            return key
+
         # if key is in cache
         result = self.cache_key_to_node.get(key)
         if result is not None:
@@ -793,7 +816,7 @@ class Graph:
             previous_out_edge.out_edge_left = new_edge_position
         elif state == 1:  # must insert right
             previous_out_edge.out_edge_right = new_edge_position
-        # add OUT edge
+        # update previous out-edge
         self.set_edge_at(previous_out_edge, previous_out_pos)
 
         # =====================================================================
@@ -806,13 +829,12 @@ class Graph:
         elif state == 1:
             previous_in_edge.in_edge_right = new_edge_position
         else:  # edge shouldn't exist
-            print(previous_in_edge)
-            print(new_edge)
             raise ValueError("strange")
         # update previous in-edge
         self.set_edge_at(previous_in_edge, previous_in_pos)
 
-        # add new edge
+        # =====================================================================
+        # insert new edge
         self.set_edge_at(new_edge, new_edge_position)
         self.increment_edge(recycled)
         return new_edge
@@ -845,6 +867,10 @@ class Graph:
 
         # erase edge from file
         self.erase_edge_at(edge_pos)
+
+    def remove_node(self, source):
+        source = self.node(source)
+        print(source)
 
     def __setitem__(self, key, attr):
         return self.add_node(key, attr)
