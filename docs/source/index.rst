@@ -1,7 +1,7 @@
 .. _contents:
 
-Kinbaku documentation!
-======================
+Kinbaku documentation
+=====================
 
 .. only:: html
 

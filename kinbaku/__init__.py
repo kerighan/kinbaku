@@ -1,3 +1,10 @@
+"""
+Kinbaku
+=======
+Kinbaku is a graph database written in pure Python, made for storing,
+updating and accessing large graphs directly on disk.
+See https://kinbaku.readthedocs.io/en/latest/ for complete documentation.
+"""
 from .utils import CacheDict, compare_nodes, compare_edge
 from .utils import to_string, stringify_key
 from .structure import Edge, Node, Header
