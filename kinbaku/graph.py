@@ -110,12 +110,12 @@ class Graph:
             self.edge_class = Edge
 
         # initialize sizes
-        self.init_edge_size()
-        self.init_node_size()
-        self.init_header_size()
+        self._init_edge_size()
+        self._init_node_size()
+        self._init_header_size()
 
         # mmap file
-        self.load_file(overwrite)
+        self._load_file(overwrite)
 
     # =========================================================================
     # Properties
@@ -137,8 +137,8 @@ class Graph:
     @property
     def nodes(self):
         position = 0
-        leaf = self.get_node_at(position)
-        yield from self.node_dfs(leaf, as_key=True)
+        leaf = self._get_node_at(position)
+        yield from self._node_dfs(leaf, as_key=True)
 
     @property
     def edges(self):
@@ -149,18 +149,18 @@ class Graph:
             if is_node:
                 position += self.NODE_TO_EDGE_RATIO
             else:
-                edge = self.get_edge_at(position)
+                edge = self._get_edge_at(position)
                 position += 1
                 if edge.target == 0:
                     continue
 
-                yield self.get_keys_from_edge(edge)
+                yield self._get_keys_from_edge(edge)
 
     # =========================================================================
     # Parsers
     # =========================================================================
 
-    def parse_fields(self, data):
+    def _parse_fields(self, data):
         DATA_FORMAT = ""
         DATA_VALUES = []
         for field in data.__dataclass_fields__.values():
@@ -184,21 +184,21 @@ class Graph:
                 DATA_VALUES.append(0.)
         return DATA_FORMAT, DATA_VALUES
 
-    def parse_values(self, data):
+    def _parse_values(self, data):
         values = []
         for field in data.__dataclass_fields__.keys():
             value = getattr(data, field)
             if field == "key":
-                values += self.key_to_tuple(value)
+                values += self._key_to_tuple(value)
             elif isinstance(value, str):
-                values += self.str_to_tuple(value)
+                values += self._str_to_tuple(value)
             elif isinstance(value, tuple):
                 values += list(value)
             else:
                 values.append(value)
         return values
 
-    def parse_attributes(self, leaf, attr):
+    def _parse_attributes(self, leaf, attr):
         if attr is None:
             return
         for attribute, value in attr.items():
@@ -210,13 +210,13 @@ class Graph:
     # Initializers
     # =========================================================================
 
-    def init_edge_size(self):
-        self.EDGE_FORMAT, VALUES = self.parse_fields(self.edge_class)
+    def _init_edge_size(self):
+        self.EDGE_FORMAT, VALUES = self._parse_fields(self.edge_class)
         self.EDGE = pack(self.EDGE_FORMAT, *VALUES)
         self.EDGE_SIZE = len(self.EDGE)
 
-    def init_node_size(self):
-        self.NODE_FORMAT, VALUES = self.parse_fields(self.node_class)
+    def _init_node_size(self):
+        self.NODE_FORMAT, VALUES = self._parse_fields(self.node_class)
         VALUES[0] = 1  # boolean that indicates that item is node
         self.NODE = pack(self.NODE_FORMAT, *VALUES)
         self.NODE_SIZE = len(self.NODE)
@@ -229,7 +229,7 @@ class Graph:
             self.NODE +
             b'\x00' * (self.NODE_PLACEHOLDER_SIZE - self.NODE_SIZE))
 
-    def init_header_size(self):
+    def _init_header_size(self):
         HEADER_FORMAT = ""
         HEADER_VALUES = []
         for name, field in Header.__dataclass_fields__.items():
@@ -252,36 +252,36 @@ class Graph:
     # File & memory management
     # =========================================================================
 
-    def load_file(self, overwrite):
+    def _load_file(self, overwrite):
         if not os.path.exists(self.filename) or overwrite:
             with open(self.filename, "wb") as f:
                 f.write(self.HEADER)
                 f.write(self.NODE_PLACEHOLDER)
                 f.write(self.EDGE * self.table_increment)
-            self.map_to_memory()
-            self.get_sizes()
+            self._map_to_memory()
+            self._get_sizes()
         else:
-            self.map_to_memory()
-            self.get_sizes()
+            self._map_to_memory()
+            self._get_sizes()
             if self.preload:
                 for _ in self.nodes:
                     pass
 
-    def map_to_memory(self):
+    def _map_to_memory(self):
         with open(self.filename, "r+b") as f:
             if self.flag == "w":
                 self.mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_WRITE)
             else:
                 self.mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
-    def expand(self):
+    def _expand(self):
         if (
             self.header.next_table_position <=
             self.header.table_size - .1 * self.table_increment
         ):
             self.mm[:self.HEADER_SIZE] = pack(
                 self.HEADER_FORMAT,
-                *self.parse_values(self.header))
+                *self._parse_values(self.header))
             return
 
         with open(self.filename, "ab") as f:
@@ -291,27 +291,27 @@ class Graph:
         self.header.table_size += self.table_increment
         self.mm[:self.HEADER_SIZE] = pack(
             self.HEADER_FORMAT,
-            *self.parse_values(self.header))
-        self.map_to_memory()
+            *self._parse_values(self.header))
+        self._map_to_memory()
 
-    def increment_node(self, recycled):
+    def _increment_node(self, recycled):
         self.header.n_nodes += 1
         self.header.node_id += 1
         if not recycled:
             self.header.next_table_position += self.NODE_TO_EDGE_RATIO
-        self.expand()
+        self._expand()
 
-    def increment_edge(self, recycled):
+    def _increment_edge(self, recycled):
         self.header.n_edges += 1
         if not recycled:
             self.header.next_table_position += 1
-        self.expand()
+        self._expand()
 
-    def decrement_edge(self):
+    def _decrement_edge(self):
         self.header.n_edges -= 1
-        self.expand()
+        self._expand()
 
-    def cache_node(self, key, node):
+    def _cache_node(self, key, node):
         self.cache_key_to_node[key] = node
         self.cache_id_to_key[node.index] = key
         self.cache_pos_to_node[node.position] = node
@@ -320,7 +320,7 @@ class Graph:
         self.cache_id_to_key = {}  # important
         self.cache_key_to_node = CacheDict(cache_len=self.cache_len)
         self.cache_pos_to_node = CacheDict(cache_len=self.cache_len)
-        self.get_sizes()
+        self._get_sizes()
 
     def find_tombstones(self):
         position = 0
@@ -342,8 +342,8 @@ class Graph:
     # Tree traversal
     # =========================================================================
 
-    def find_edge_out_pos(self, position, new_edge):
-        current_edge = self.get_edge_at(position)
+    def _find_edge_out_pos(self, position, new_edge):
+        current_edge = self._get_edge_at(position)
         while True:
             state = compare_edge(current_edge, new_edge)
             if state == -1:  # go left
@@ -352,7 +352,7 @@ class Graph:
                     break
                 else:
                     position = current_edge.out_edge_left
-                    current_edge = self.get_edge_at(position)
+                    current_edge = self._get_edge_at(position)
                     continue
             elif state == 1:  # go right
                 # if right out edge is empty
@@ -360,20 +360,20 @@ class Graph:
                     break
                 else:
                     position = current_edge.out_edge_right
-                    current_edge = self.get_edge_at(position)
+                    current_edge = self._get_edge_at(position)
                     continue
             else:  # is equal
                 break
         return current_edge, position, state
 
-    def find_edge_in_pos(self, position, new_edge):
-        current_edge = self.get_edge_at(position)
+    def _find_edge_in_pos(self, position, new_edge):
+        current_edge = self._get_edge_at(position)
         while True:
             state = compare_edge(current_edge, new_edge)
             if state == -1:  # go left
                 if current_edge.in_edge_left != 0:
                     position = current_edge.in_edge_left
-                    current_edge = self.get_edge_at(position)
+                    current_edge = self._get_edge_at(position)
                     continue
                 else:
                     break
@@ -381,7 +381,7 @@ class Graph:
                 # if right in edge is empty
                 if current_edge.in_edge_right != 0:
                     position = current_edge.in_edge_right
-                    current_edge = self.get_edge_at(position)
+                    current_edge = self._get_edge_at(position)
                     continue
                 else:
                     break
@@ -389,7 +389,7 @@ class Graph:
                 break
         return current_edge, position, state
 
-    def find_inorder_successor(self, position, edge, out=True):
+    def _find_inorder_successor(self, position, edge, out=True):
         if out:
             edge_right = edge.out_edge_right
             edge_left_name = "out_edge_left"
@@ -398,7 +398,7 @@ class Graph:
             edge_left_name = "in_edge_left"
 
         successor_position = edge_right
-        successor_edge = self.get_edge_at(successor_position)
+        successor_edge = self._get_edge_at(successor_position)
 
         antecedent_position = position
         antecedent = edge
@@ -407,26 +407,26 @@ class Graph:
             antecedent_position = successor_position
 
             successor_position = getattr(successor_edge, edge_left_name)
-            successor_edge = self.get_edge_at(successor_position)
+            successor_edge = self._get_edge_at(successor_position)
         return (
             successor_edge, successor_position,
             antecedent, antecedent_position)
 
-    def find_edge_out_antecedent(self, position, edge):
-        current_edge = self.get_edge_at(position)
+    def _find_edge_out_antecedent(self, position, edge):
+        current_edge = self._get_edge_at(position)
         while True:
             state = compare_edge(current_edge, edge)
             if state == -1:
                 previous_edge = current_edge
                 previous_pos = position
                 position = current_edge.out_edge_left
-                current_edge = self.get_edge_at(position)
+                current_edge = self._get_edge_at(position)
                 previous_state = -1
             elif state == 1:
                 previous_edge = current_edge
                 previous_pos = position
                 position = current_edge.out_edge_right
-                current_edge = self.get_edge_at(position)
+                current_edge = self._get_edge_at(position)
                 previous_state = 1
             else:
                 break
@@ -436,21 +436,21 @@ class Graph:
             current_edge, position,
             previous_edge, previous_pos, previous_state)
 
-    def find_edge_in_antecedent(self, position, edge):
-        current_edge = self.get_edge_at(position)
+    def _find_edge_in_antecedent(self, position, edge):
+        current_edge = self._get_edge_at(position)
         while True:
             state = compare_edge(current_edge, edge)
             if state == -1:
                 previous_edge = current_edge
                 previous_pos = position
                 position = current_edge.in_edge_left
-                current_edge = self.get_edge_at(position)
+                current_edge = self._get_edge_at(position)
                 previous_state = -1
             elif state == 1:
                 previous_edge = current_edge
                 previous_pos = position
                 position = current_edge.in_edge_right
-                current_edge = self.get_edge_at(position)
+                current_edge = self._get_edge_at(position)
                 previous_state = 1
             else:
                 break
@@ -460,7 +460,7 @@ class Graph:
             current_edge, position,
             previous_edge, previous_pos, previous_state)
 
-    def node_dfs(self, node, as_key=False):
+    def _node_dfs(self, node, as_key=False):
         if node.index != 0:
             if as_key:
                 yield node.key
@@ -468,40 +468,38 @@ class Graph:
                 yield node
 
         # store in cache
-        self.cache_node(node.key, node)
+        self._cache_node(node.key, node)
 
         if node.left != 0:
-            yield from self.node_dfs(self.get_node_at(node.left), as_key)
+            yield from self._node_dfs(self._get_node_at(node.left), as_key)
         if node.right != 0:
-            yield from self.node_dfs(self.get_node_at(node.right), as_key)
+            yield from self._node_dfs(self._get_node_at(node.right), as_key)
 
-    def edge_dfs(self, edge):
+    def _edge_dfs(self, edge):
         if edge.target != 0:
             res = self.cache_id_to_key.get(edge.target)
             if res is None:
-                res = self.get_node_at(edge.target_position).key
+                res = self._get_node_at(edge.target_position).key
             yield res
-            # yield edge
 
         if edge.out_edge_left != 0:
-            yield from self.edge_dfs(self.get_edge_at(edge.out_edge_left))
+            yield from self._edge_dfs(self._get_edge_at(edge.out_edge_left))
         if edge.out_edge_right != 0:
-            yield from self.edge_dfs(self.get_edge_at(edge.out_edge_right))
+            yield from self._edge_dfs(self._get_edge_at(edge.out_edge_right))
 
-    def edge_in_dfs(self, edge):
+    def _edge_in_dfs(self, edge):
         if edge.target != 0:
             res = self.cache_id_to_key.get(edge.source)
             if res is None:
-                res = self.get_node_at(edge.source_position).key
+                res = self._get_node_at(edge.source_position).key
             yield res
-            # yield edge
 
         if edge.in_edge_left != 0:
-            yield from self.edge_in_dfs(self.get_edge_at(edge.in_edge_left))
+            yield from self._edge_in_dfs(self._get_edge_at(edge.in_edge_left))
         if edge.in_edge_right != 0:
-            yield from self.edge_in_dfs(self.get_edge_at(edge.in_edge_right))
+            yield from self._edge_in_dfs(self._get_edge_at(edge.in_edge_right))
 
-    def remove_edge_from_tree(
+    def _remove_edge_from_tree(
         self, edge, edge_pos, antecedent, antecedent_pos, state,
         out=True
     ):
@@ -522,24 +520,24 @@ class Graph:
                 setattr(antecedent, edge_left_name, 0)
             else:
                 setattr(antecedent, edge_right_name, 0)
-            self.set_edge_at(antecedent, antecedent_pos)
+            self._set_edge_at(antecedent, antecedent_pos)
         # case 2: edge has no left child or no right child
         elif edge_left == 0:
             if state == -1:
                 setattr(antecedent, edge_left_name, edge_right)
             else:
                 setattr(antecedent, edge_right_name, edge_right)
-            self.set_edge_at(antecedent, antecedent_pos)
+            self._set_edge_at(antecedent, antecedent_pos)
         elif edge_right == 0:
             if state == -1:
                 setattr(antecedent, edge_left_name, edge_left)
             else:
                 setattr(antecedent, edge_right_name, edge_left)
-            self.set_edge_at(antecedent, antecedent_pos)
+            self._set_edge_at(antecedent, antecedent_pos)
         # case 3: edge has two children
         else:
             successor, successor_pos, successor_ant, successor_ant_pos =    \
-                self.find_inorder_successor(edge_pos, edge, out=out)
+                self._find_inorder_successor(edge_pos, edge, out=out)
 
             # if successor has no children
             if getattr(successor, edge_right_name) == 0:
@@ -548,51 +546,51 @@ class Graph:
                 # avoid self-loops
                 if edge_right != successor_pos:
                     setattr(successor, edge_right_name, edge_right)
-                self.set_edge_at(successor, successor_pos)
+                self._set_edge_at(successor, successor_pos)
                 # replace successor antecedent's link
                 if successor_ant_pos != edge_pos:
                     setattr(successor_ant, edge_left_name, 0)
-                    self.set_edge_at(successor_ant, successor_ant_pos)
+                    self._set_edge_at(successor_ant, successor_ant_pos)
             # if successor antecedent is the original edge
             elif successor_ant_pos == edge_pos:
                 # replace successor's links
                 setattr(successor, edge_left_name, edge_left)
-                self.set_edge_at(successor, successor_pos)
+                self._set_edge_at(successor, successor_pos)
             else:
                 successor_right = getattr(successor, edge_right_name)
                 setattr(successor_ant, edge_left_name, successor_right)
-                self.set_edge_at(successor_ant, successor_ant_pos)
+                self._set_edge_at(successor_ant, successor_ant_pos)
                 setattr(successor, edge_right_name, edge_right)
                 setattr(successor, edge_left_name, edge_left)
-                self.set_edge_at(successor, successor_pos)
+                self._set_edge_at(successor, successor_pos)
 
             if state == -1:
                 setattr(antecedent, edge_left_name, successor_pos)
             else:
                 setattr(antecedent, edge_right_name, successor_pos)
-            self.set_edge_at(antecedent, antecedent_pos)
+            self._set_edge_at(antecedent, antecedent_pos)
 
     # =========================================================================
     # Getters
     # =========================================================================
 
-    def get_next_node_position(self):
+    def _get_next_node_position(self):
         if len(self.node_tombstone) == 0:
             return self.header.next_table_position, False
         return self.node_tombstone.pop(0), True
 
-    def get_next_edge_position(self):
+    def _get_next_edge_position(self):
         if len(self.edge_tombstone) == 0:
             recycled = False
             return self.header.next_table_position, recycled
         recycled = True
         return self.edge_tombstone.pop(0), recycled
 
-    def get_sizes(self):
+    def _get_sizes(self):
         data = unpack(self.HEADER_FORMAT, self.mm[:self.HEADER_SIZE])
         self.header = Header(*data)
 
-    def get_node_at(self, position):
+    def _get_node_at(self, position):
         node = self.cache_pos_to_node.get(position)
         if node is not None:
             return node
@@ -601,7 +599,7 @@ class Graph:
         try:
             data = unpack(self.NODE_FORMAT, self.mm[ind:ind+self.NODE_SIZE])
         except error:
-            self.map_to_memory()
+            self._map_to_memory()
             data = unpack(self.NODE_FORMAT, self.mm[ind:ind+self.NODE_SIZE])
 
         i = 0
@@ -619,44 +617,44 @@ class Graph:
         node = self.node_class(*res)
 
         if node.index not in self.cache_id_to_key:
-            self.cache_node(node.key, node)
+            self._cache_node(node.key, node)
         return node
 
-    def get_edge_at(self, position):
+    def _get_edge_at(self, position):
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         data = unpack(self.EDGE_FORMAT, self.mm[ind:ind+self.EDGE_SIZE])
         edge = self.edge_class(*data)
         return edge
 
-    def get_edge_hash(self, source, target, edge_type):
+    def _get_edge_hash(self, source, target, edge_type):
         return self.hash_func(
             str(source.hash) + "_" + str(edge_type) + "_" + str(target.hash))
 
-    def get_keys_from_edge(self, edge):
+    def _get_keys_from_edge(self, edge):
         src = edge.source
         src_pos = edge.source_position
         u = self.cache_id_to_key.get(src)
         if u is None:
-            u = self.get_node_at(src_pos).key
+            u = self._get_node_at(src_pos).key
 
         tgt = edge.target
         tgt_pos = edge.target_position
         v = self.cache_id_to_key.get(tgt)
         if v is None:
-            v = self.get_node_at(tgt_pos).key
+            v = self._get_node_at(tgt_pos).key
         return u, v
 
     @stringify_key
     def neighbors(self, key):
         leaf = self.node(key)
-        start = self.get_edge_at(leaf.edge_start)
-        yield from self.edge_dfs(start)
+        start = self._get_edge_at(leaf.edge_start)
+        yield from self._edge_dfs(start)
 
     @stringify_key
     def predecessors(self, key):
         leaf = self.node(key)
-        start = self.get_edge_at(leaf.edge_start)
-        yield from self.edge_in_dfs(start)
+        start = self._get_edge_at(leaf.edge_start)
+        yield from self._edge_in_dfs(start)
 
     @stringify_key
     def degree(self, key):
@@ -683,20 +681,20 @@ class Graph:
 
         # if root is empty, set first value
         position = 0
-        leaf = self.get_node_at(position)
+        leaf = self._get_node_at(position)
         state = compare_nodes(key_hash, key, leaf)
 
         while state != 0:
             if state == -1:
                 if leaf.left == 0:
                     raise KeyError(f"Node {key} does not exist")
-                leaf = self.get_node_at(leaf.left)
+                leaf = self._get_node_at(leaf.left)
             else:
                 if leaf.right == 0:
                     raise KeyError(f"Node {key} does not exist")
-                leaf = self.get_node_at(leaf.right)
+                leaf = self._get_node_at(leaf.right)
             state = compare_nodes(key_hash, key, leaf)
-        self.cache_node(key, leaf)
+        self._cache_node(key, leaf)
         return leaf
 
     def __getitem__(self, key):
@@ -706,22 +704,22 @@ class Graph:
     # Setters
     # =========================================================================
 
-    def set_node_at(self, leaf, position):
-        values = self.parse_values(leaf)
+    def _set_node_at(self, leaf, position):
+        values = self._parse_values(leaf)
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         self.mm[ind:ind+self.NODE_SIZE] = pack(self.NODE_FORMAT, *values)
-        self.cache_node(leaf.key, leaf)
+        self._cache_node(leaf.key, leaf)
 
-    def set_edge_at(self, edge, position):
-        values = self.parse_values(edge)
+    def _set_edge_at(self, edge, position):
+        values = self._parse_values(edge)
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         self.mm[ind:ind+self.EDGE_SIZE] = pack(self.EDGE_FORMAT, *values)
 
-    def erase_edge_at(self, position):
+    def _erase_edge_at(self, position):
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         self.mm[ind:ind+self.EDGE_SIZE] = self.EDGE
         self.edge_tombstone.append(position)
-        self.decrement_edge()
+        self._decrement_edge()
 
     # =========================================================================
     # Create & delete Nodes & Edges
@@ -733,29 +731,29 @@ class Graph:
 
         # check if root node is empty
         position = 0
-        leaf = self.get_node_at(position)
+        leaf = self._get_node_at(position)
         if leaf.index == 0:
             leaf.index = self.header.node_id
             leaf.key = key
             leaf.hash = key_hash
             leaf.position = position
-            leaf.edge_start, recycled = self.get_next_edge_position()
-            self.parse_attributes(leaf, attr)
+            leaf.edge_start, recycled = self._get_next_edge_position()
+            self._parse_attributes(leaf, attr)
 
-            self.set_node_at(leaf, position)
-            self.increment_node(False)
+            self._set_node_at(leaf, position)
+            self._increment_node(False)
 
             # create self-loop edge for new nodes
             edge = self.edge_class()
             edge.source = leaf.index
             # edge.source_position = leaf.position
             edge.hash = key_hash
-            self.set_edge_at(edge, leaf.edge_start)
-            self.increment_edge(recycled)
+            self._set_edge_at(edge, leaf.edge_start)
+            self._increment_edge(recycled)
             return leaf
 
         # next node insertion position
-        new_position, node_recycled = self.get_next_node_position()
+        new_position, node_recycled = self._get_next_node_position()
 
         # new node
         node = self.node_class()
@@ -763,7 +761,7 @@ class Graph:
         node.position = new_position
         node.key = key
         node.hash = key_hash
-        self.parse_attributes(node, attr)
+        self._parse_attributes(node, attr)
 
         # new edge
         edge = self.edge_class()
@@ -784,7 +782,7 @@ class Graph:
                     break
                 else:
                     position = leaf.left
-                    leaf = self.get_node_at(position)
+                    leaf = self._get_node_at(position)
                     continue
             elif state == 1:  # go right
                 if leaf.right == 0:  # and leaf is empty
@@ -792,7 +790,7 @@ class Graph:
                     break
                 else:
                     position = leaf.right
-                    leaf = self.get_node_at(position)
+                    leaf = self._get_node_at(position)
                     continue
             else:  # is equal
                 if node_recycled:
@@ -804,26 +802,26 @@ class Graph:
                 node.position = leaf.position
                 if node == leaf:
                     return leaf
-                self.set_node_at(node, position)
+                self._set_node_at(node, position)
                 return node
 
         # update sizes
-        self.increment_node(node_recycled)
+        self._increment_node(node_recycled)
 
         # add new node
-        node.edge_start, recycled = self.get_next_edge_position()
-        self.set_node_at(node, new_position)
+        node.edge_start, recycled = self._get_next_edge_position()
+        self._set_node_at(node, new_position)
 
         # add new edge for the node
-        self.set_edge_at(edge, node.edge_start)
-        self.increment_edge(recycled)
+        self._set_edge_at(edge, node.edge_start)
+        self._increment_edge(recycled)
 
         # update the node before: link to left or right tree
         if left:
             leaf.left = new_position
         else:
             leaf.right = new_position
-        self.set_node_at(leaf, position)
+        self._set_node_at(leaf, position)
         return node
 
     def add_edge(self, source, target, attr=None, edge_type=0):
@@ -849,30 +847,30 @@ class Graph:
         new_edge.target = target.index
         new_edge.source_position = source.position
         new_edge.target_position = target.position
-        new_edge.hash = self.get_edge_hash(source, target, edge_type)
+        new_edge.hash = self._get_edge_hash(source, target, edge_type)
         new_edge.type = edge_type
-        self.parse_attributes(new_edge, attr)
+        self._parse_attributes(new_edge, attr)
 
         # =====================================================================
         # OUT direction
-        previous_out_edge, previous_out_pos, state = self.find_edge_out_pos(
+        previous_out_edge, previous_out_pos, state = self._find_edge_out_pos(
             source.edge_start, new_edge)
 
         # edge already exists
         if state == 0:
             return previous_out_edge
 
-        new_edge_position, recycled = self.get_next_edge_position()
+        new_edge_position, recycled = self._get_next_edge_position()
         if state == -1:  # must insert left
             previous_out_edge.out_edge_left = new_edge_position
         elif state == 1:  # must insert right
             previous_out_edge.out_edge_right = new_edge_position
         # update previous out-edge
-        self.set_edge_at(previous_out_edge, previous_out_pos)
+        self._set_edge_at(previous_out_edge, previous_out_pos)
 
         # =====================================================================
         # IN direction
-        previous_in_edge, previous_in_pos, state = self.find_edge_in_pos(
+        previous_in_edge, previous_in_pos, state = self._find_edge_in_pos(
             target.edge_start, new_edge)
 
         if state == -1:
@@ -882,12 +880,12 @@ class Graph:
         else:  # edge shouldn't exist
             raise ValueError("strange")
         # update previous in-edge
-        self.set_edge_at(previous_in_edge, previous_in_pos)
+        self._set_edge_at(previous_in_edge, previous_in_pos)
 
         # =====================================================================
         # insert new edge
-        self.set_edge_at(new_edge, new_edge_position)
-        self.increment_edge(recycled)
+        self._set_edge_at(new_edge, new_edge_position)
+        self._increment_edge(recycled)
         return new_edge
 
     def remove_edge(self, source, target, attr=None, edge_type=0):
@@ -899,25 +897,25 @@ class Graph:
         edge = self.edge_class()
         edge.source = source.index
         edge.target = target.index
-        edge.hash = self.get_edge_hash(source, target, edge_type)
+        edge.hash = self._get_edge_hash(source, target, edge_type)
         edge.type = edge_type
 
         # =====================================================================
         # OUT direction
         edge, edge_pos, edge_out_ant, edge_out_ant_pos, state =   \
-            self.find_edge_out_antecedent(source.edge_start, edge)
-        self.remove_edge_from_tree(
+            self._find_edge_out_antecedent(source.edge_start, edge)
+        self._remove_edge_from_tree(
             edge, edge_pos, edge_out_ant, edge_out_ant_pos, state, out=True)
 
         # =====================================================================
         # IN direction
         _, _, edge_in_ant, edge_in_ant_pos, state = \
-            self.find_edge_in_antecedent(target.edge_start, edge)
-        self.remove_edge_from_tree(
+            self._find_edge_in_antecedent(target.edge_start, edge)
+        self._remove_edge_from_tree(
             edge, edge_pos, edge_in_ant, edge_in_ant_pos, state, out=False)
 
         # erase edge from file
-        self.erase_edge_at(edge_pos)
+        self._erase_edge_at(edge_pos)
 
     def remove_node(self, source):
         source = self.node(source)
@@ -930,12 +928,12 @@ class Graph:
     # Utils
     # =========================================================================
 
-    def str_to_tuple(self, key):
+    def _str_to_tuple(self, key):
         res = tuple(ord(c) for c in key)
         res += (0,) * (self.max_str_len - len(res))
         return res
 
-    def key_to_tuple(self, key):
+    def _key_to_tuple(self, key):
         res = tuple(ord(c) for c in key)
         res += (0,) * (self.max_key_len - len(res))
         return res
