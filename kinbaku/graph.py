@@ -131,6 +131,11 @@ class Graph:
 
     @property
     def n_edges(self):
+        """Number of edges in graph
+
+        Returns:
+            int: number of edges
+        """
         return self.header.n_edges - self.header.n_nodes
 
     @property
