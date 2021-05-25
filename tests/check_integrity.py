@@ -32,7 +32,7 @@ G_kn = kn.Graph("test.db", overwrite=True)
 G_nx = nx.DiGraph()
 
 N = 10000
-iterations = 5000
+iterations = 30000
 edges = EdgeList()  # not efficient
 
 # =============================================================================

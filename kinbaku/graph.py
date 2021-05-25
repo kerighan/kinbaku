@@ -403,17 +403,17 @@ class Graph:
     def _find_inorder_successor(self, edge, out=True):
         if out:
             edge_right = edge.out_edge_right
-            edge_left_name = "out_edge_left"
+            left = "out_edge_left"
         else:
             edge_right = edge.in_edge_right
-            edge_left_name = "in_edge_left"
+            left = "in_edge_left"
 
         successor = self._get_edge_at(edge_right)
         antecedent = edge
 
-        while getattr(successor, edge_left_name) != 0:
+        while getattr(successor, left) != 0:
             antecedent = successor
-            successor_position = getattr(successor, edge_left_name)
+            successor_position = getattr(successor, left)
             successor = self._get_edge_at(successor_position)
         return (successor, antecedent)
 
@@ -564,7 +564,6 @@ class Graph:
             self._rewire(parent, child, state, out)
         # case 3: edge to remove has two children
         else:
-            print("case3")
             successor, antecedent = self._find_inorder_successor(edge, out=out)
             right = "out_edge_right" if out else "in_edge_right"
             left = "out_edge_left" if out else "in_edge_left"
@@ -573,152 +572,49 @@ class Graph:
             # remove antecedent link to successor
             setattr(antecedent, left, 0)
 
-            # set successor parent to parent
+            # set successor's parent to parent
             setattr(successor, up, parent.position)
             if state == -1:
                 setattr(parent, left, successor.position)
             else:
                 setattr(parent, right, successor.position)
 
-            # case a: successor has no children
-            if getattr(successor, right) != 0:
+            # case a: antecedent happens to be the edge to remove
+            if antecedent.position == edge.position:
+                setattr(successor, left, edge_left)
+                edge_left_item = self._get_edge_at(edge_left)
+                setattr(edge_left_item, up, successor.position)
+                self._set_edge_at(edge_left_item, edge_left)
+
+                self._set_edge_at(successor, successor.position)
+                self._set_edge_at(parent, parent.position)
+            # case b: antecedent is further down
+            else:
+                # put left tree in left child of successor
+                setattr(successor, left, edge_left)
+                edge_left_item = self._get_edge_at(edge_left)
+                setattr(edge_left_item, up, successor.position)
+                self._set_edge_at(edge_left_item, edge_left)
+
+                if edge_right == antecedent.position:
+                    setattr(antecedent, up, successor.position)
+                else:
+                    edge_right_item = self._get_edge_at(edge_right)
+                    setattr(edge_right_item, up, successor.position)
+                    self._set_edge_at(edge_right_item, edge_right)
+
+                # put right tree of successor to antecdent left tree
                 successor_right_pos = getattr(successor, right)
-                successor_right = self._get_edge_at(successor_right_pos)
-                setattr(successor_right, up, antecedent.position)
                 setattr(antecedent, left, successor_right_pos)
+                self._set_edge_at(antecedent, antecedent.position)
+                if successor_right_pos != 0:
+                    successor_right = self._get_edge_at(successor_right_pos)
+                    setattr(successor_right, up, antecedent.position)
+                    self._set_edge_at(successor_right, successor_right_pos)
 
-            # update left of successor
-            setattr(successor, left, edge_left)
-            edge_left_item = self._get_edge_at(edge_left)
-            setattr(edge_left_item, up, successor.position)
-            self._set_edge_at(edge_left_item, edge_left)
-
-            # update right of successor
-            setattr(successor, right, edge_right)
-            edge_right_item = self._get_edge_at(edge_right)
-            setattr(edge_right_item, up, successor.position)
-            self._set_edge_at(edge_right_item, edge_right)
-
-            # update all edges
-            self._set_edge_at(successor, successor.position)
-            self._set_edge_at(antecedent, antecedent.position)
-            self._set_edge_at(parent, parent.position)
-
-            # print(successor)
-            # print(antecedent)
-            # raise ArithmeticError
-
-    # def _remove_edge_from_tree2(
-    #     self, edge, edge_pos, antecedent, antecedent_pos, state,
-    #     out=True
-    # ):
-    #     # utils
-    #     direction = "out" if out else "in"
-    #     edge_left_name = f"{direction}_edge_left"
-    #     edge_right_name = f"{direction}_edge_right"
-    #     edge_parent_name = f"{direction}_edge_parent"
-    #     edge_left = getattr(edge, edge_left_name)
-    #     edge_right = getattr(edge, edge_right_name)
-
-    #     # case 1: edge has no children - just remove link to it
-    #     if edge_left == 0 and edge_right == 0:
-    #         if state == -1:
-    #             setattr(antecedent, edge_left_name, 0)
-    #         else:
-    #             setattr(antecedent, edge_right_name, 0)
-    #         self._set_edge_at(antecedent, antecedent_pos)
-    #     # case 2: edge has a right child
-    #     elif edge_left == 0:
-    #         if state == -1:
-    #             setattr(antecedent, edge_left_name, edge_right)
-    #         else:
-    #             setattr(antecedent, edge_right_name, edge_right)
-    #         child = self._get_edge_at(edge_right)
-    #         setattr(child, edge_parent_name, antecedent_pos)
-
-    #         self._set_edge_at(antecedent, antecedent_pos)
-    #         self._set_edge_at(child, edge_right)
-    #     # case 2: edge has a left child
-    #     elif edge_right == 0:
-    #         if state == -1:
-    #             setattr(antecedent, edge_left_name, edge_left)
-    #         else:
-    #             setattr(antecedent, edge_right_name, edge_left)
-    #         child = self._get_edge_at(edge_left)
-    #         setattr(child, edge_parent_name, antecedent_pos)
-
-    #         self._set_edge_at(antecedent, antecedent_pos)
-    #         self._set_edge_at(child, edge_left)
-    #     # case 3: edge has two children
-    #     else:
-    #         successor, successor_pos, successor_ant, successor_ant_pos =    \
-    #             self._find_inorder_successor(edge_pos, edge, out=out)
-
-    #         # if successor has no children
-    #         if getattr(successor, edge_right_name) == 0:
-    #             # replace successor's links
-    #             setattr(successor, edge_left_name, edge_left)
-    #             # update left child
-    #             child = self._get_edge_at(edge_left)
-    #             setattr(child, edge_parent_name, successor_pos)
-    #             self._set_edge_at(child, edge_left)
-
-    #             # avoid self-loops
-    #             if edge_right != successor_pos:
-    #                 setattr(successor, edge_right_name, edge_right)
-    #                 # update right child
-    #                 child = self._get_edge_at(edge_right)
-    #                 setattr(child, edge_parent_name, successor_pos)
-    #                 self._set_edge_at(child, edge_right)
-
-    #             self._set_edge_at(successor, successor_pos)
-
-    #             # replace successor antecedent's link
-    #             if successor_ant_pos != edge_pos:
-    #                 setattr(successor_ant, edge_left_name, 0)
-    #                 self._set_edge_at(successor_ant, successor_ant_pos)
-    #         # if successor antecedent is the original edge
-    #         elif successor_ant_pos == edge_pos:
-    #             print("1")
-    #             # replace successor's links
-    #             setattr(successor, edge_left_name, edge_left)
-    #             self._set_edge_at(successor, successor_pos)
-    #             # update left child
-    #             child = self._get_edge_at(edge_left)
-    #             setattr(child, edge_parent_name, successor_pos)
-    #             self._set_edge_at(child, edge_left)
-    #         else:
-    #             print("2")
-    #             successor_right = getattr(successor, edge_right_name)
-    #             setattr(successor_ant, edge_left_name, successor_right)
-    #             self._set_edge_at(successor_ant, successor_ant_pos)
-    #             # update right successor child
-    #             child = self._get_edge_at(successor_right)
-    #             setattr(child, edge_parent_name, successor_ant_pos)
-    #             self._set_edge_at(child, successor_right)
-
-    #             setattr(successor, edge_right_name, edge_right)
-    #             setattr(successor, edge_left_name, edge_left)
-    #             self._set_edge_at(successor, successor_pos)
-
-    #             # update right successor child
-    #             child = self._get_edge_at(edge_right)
-    #             setattr(child, edge_parent_name, successor_pos)
-    #             self._set_edge_at(child, edge_right)
-    #             # update left successor child
-    #             child = self._get_edge_at(edge_left)
-    #             setattr(child, edge_parent_name, successor_pos)
-    #             self._set_edge_at(child, edge_left)
-
-    #         if state == -1:
-    #             setattr(antecedent, edge_left_name, successor_pos)
-    #         else:
-    #             setattr(antecedent, edge_right_name, successor_pos)
-    #         child = self._get_edge_at(successor_pos)
-    #         setattr(child, edge_parent_name, antecedent_pos)
-    #         self._set_edge_at(child, successor_pos)
-
-    #         self._set_edge_at(antecedent, antecedent_pos)
+                setattr(successor, right, edge_right)
+                self._set_edge_at(successor, successor.position)
+                self._set_edge_at(parent, parent.position)
 
     # =========================================================================
     # Getters
