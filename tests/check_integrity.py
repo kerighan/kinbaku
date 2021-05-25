@@ -32,30 +32,28 @@ G_kn = kn.Graph("test.db", overwrite=True)
 G_nx = nx.DiGraph()
 
 N = 10000
-iterations = 2000
+iterations = 5000
 edges = EdgeList()  # not efficient
 
 # =============================================================================
 # ADD AND REMOVE EDGES RANDOMLY
 # probability of a deletion happening
-p_edge_del = .4
+p_edge_del = .3
 for _ in tqdm(range(iterations), desc="edge insertion & deletion"):
     assert len(G_nx.edges) == G_kn.n_edges
     assert len(G_nx.nodes) == G_kn.n_nodes
 
     draw = random.random()
-    if draw < p_edge_del:
-        if len(G_nx.edges) <= 1:
-            continue
+    if draw < p_edge_del and len(G_nx.edges) > 1:
         u, v = edges.sample()
         edges.remove((u, v))
 
-        G_nx.remove_edge(u, v)
         try:
             G_kn.remove_edge(u, v)
+            G_nx.remove_edge(u, v)
         except KeyError:
+            assert (u, v) in list(G_kn.edges)
             nns = list(G_kn.neighbors(u))
-            print(nns)
             assert v in nns
             raise KeyError
     else:

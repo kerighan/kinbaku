@@ -509,41 +509,36 @@ class Graph:
         if edge.in_edge_right != 0:
             yield from self._edge_in_dfs(self._get_edge_at(edge.in_edge_right))
 
-    def _rewire_right(self, parent, child_position, out=True):
-        if child_position == 0:
-            if out:
-                parent.out_edge_right = 0
-            else:
-                parent.in_edge_right = 0
-            self._set_edge_at(parent, parent.position)
-        else:
-            child = self._get_edge_at(child_position)
-            if out:
-                parent.out_edge_right = child_position
-                child.out_edge_parent = parent.position
-            else:
-                parent.in_edge_right = child_position
-                child.in_edge_parent = parent.position
-            self._set_edge_at(child, child_position)
-            self._set_edge_at(parent, parent.position)
-
-    def _rewire_left(self, parent, child_position, out=True):
-        if child_position == 0:
+    def _unplug(self, parent, state, out=True):
+        if state == -1:  # edge came from left
             if out:
                 parent.out_edge_left = 0
             else:
                 parent.in_edge_left = 0
-            self._set_edge_at(parent, parent.position)
         else:
-            child = self._get_edge_at(child_position)
             if out:
-                parent.out_edge_left = child_position
-                child.out_edge_parent = parent.position
+                parent.out_edge_right = 0
             else:
-                parent.in_edge_left = child_position
-                child.in_edge_parent = parent.position
-            self._set_edge_at(parent, parent.position)
-            self._set_edge_at(child, child_position)
+                parent.in_edge_right = 0
+        self._set_edge_at(parent, parent.position)
+
+    def _rewire(self, parent, child, state, out=True):
+        if state == -1:
+            if out:
+                parent.out_edge_left = child.position
+            else:
+                parent.in_edge_left = child.position
+        else:
+            if out:
+                parent.out_edge_right = child.position
+            else:
+                parent.in_edge_right = child.position
+        if out:
+            child.out_edge_parent = parent.position
+        else:
+            child.in_edge_parent = parent.position
+        self._set_edge_at(parent, parent.position)
+        self._set_edge_at(child, child.position)
 
     def _remove_edge_from_tree(self, edge, out=True):
         # utilitary variables
@@ -551,43 +546,67 @@ class Graph:
             edge_left = edge.out_edge_left
             edge_right = edge.out_edge_right
             parent = self._get_edge_at(edge.out_edge_parent)
-
-            cond_1 = parent.out_edge_left == edge.position
-            cond_2 = parent.out_edge_right == edge.position
-            assert cond_1 or cond_2
         else:
             edge_left = edge.in_edge_left
             edge_right = edge.in_edge_right
             parent = self._get_edge_at(edge.in_edge_parent)
-
-            cond_1 = parent.in_edge_left == edge.position
-            cond_2 = parent.in_edge_right == edge.position
-            assert cond_1 or cond_2
         state = compare_edge(parent, edge)
-
 
         # case 1: edge to remove has no child
         if edge_left == 0 and edge_right == 0:
-            if state == -1:  # edge came from left
-                self._rewire_left(parent, 0)
-            else:
-                self._rewire_right(parent, 0)
+            self._unplug(parent, state, out)
         # case 2: edge to remove has only one child
         elif edge_left == 0:
-            if state == -1:
-                self._rewire_left(parent, edge_right)
-            else:
-                self._rewire_right(parent, edge_right)
+            child = self._get_edge_at(edge_right)
+            self._rewire(parent, child, state, out)
         elif edge_right == 0:
-            if state == -1:
-                self._rewire_left(parent, edge_left)
-            else:
-                self._rewire_right(parent, edge_left)
+            child = self._get_edge_at(edge_left)
+            self._rewire(parent, child, state, out)
         # case 3: edge to remove has two children
         else:
-            print("\n\nhere\n")
+            print("case3")
             successor, antecedent = self._find_inorder_successor(edge, out=out)
-            print(successor, antecedent)
+            right = "out_edge_right" if out else "in_edge_right"
+            left = "out_edge_left" if out else "in_edge_left"
+            up = "out_edge_parent" if out else "in_edge_parent"
+
+            # remove antecedent link to successor
+            setattr(antecedent, left, 0)
+
+            # set successor parent to parent
+            setattr(successor, up, parent.position)
+            if state == -1:
+                setattr(parent, left, successor.position)
+            else:
+                setattr(parent, right, successor.position)
+
+            # case a: successor has no children
+            if getattr(successor, right) != 0:
+                successor_right_pos = getattr(successor, right)
+                successor_right = self._get_edge_at(successor_right_pos)
+                setattr(successor_right, up, antecedent.position)
+                setattr(antecedent, left, successor_right_pos)
+
+            # update left of successor
+            setattr(successor, left, edge_left)
+            edge_left_item = self._get_edge_at(edge_left)
+            setattr(edge_left_item, up, successor.position)
+            self._set_edge_at(edge_left_item, edge_left)
+
+            # update right of successor
+            setattr(successor, right, edge_right)
+            edge_right_item = self._get_edge_at(edge_right)
+            setattr(edge_right_item, up, successor.position)
+            self._set_edge_at(edge_right_item, edge_right)
+
+            # update all edges
+            self._set_edge_at(successor, successor.position)
+            self._set_edge_at(antecedent, antecedent.position)
+            self._set_edge_at(parent, parent.position)
+
+            # print(successor)
+            # print(antecedent)
+            # raise ArithmeticError
 
     # def _remove_edge_from_tree2(
     #     self, edge, edge_pos, antecedent, antecedent_pos, state,
