@@ -117,3 +117,6 @@ for edge in tqdm(
     except AssertionError:
         print(parent)
         print(edge)
+
+for _ in tqdm(G_kn.edges, total=G_kn.n_edges):
+    pass

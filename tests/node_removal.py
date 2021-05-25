@@ -1,35 +1,41 @@
 import kinbaku as kn
 from tqdm import tqdm
+import networkx as nx
 import random
 
 
+# create graph
 G = kn.Graph("test.db", overwrite=True)
+G_nx = nx.DiGraph()
 
-# create random edges
-N = 5000  # number of nodes
-d = 5  # average degree
-for _ in tqdm(range(N * d)):
-    u = random.randint(0, N - 1)
-    v = random.randint(0, N - 1)
+# create random connections
+N = 100
+M = 50 * N
+for _ in tqdm(range(M)):
+    u = str(random.randint(0, N-1))
+    v = str(random.randint(0, N-1))
     G.add_edge(u, v)
+    G_nx.add_edge(u, v)
 
-for key in G.nodes:
-    node = G.node(key)
-    if node.parent == 0:
-        continue
-    parent = G._get_node_at(node.parent)
-    cond_left = parent.left == node.position
-    cond_right = parent.right == node.position
-    assert cond_left or cond_right
+# # print()
+print(len(list(G.neighbors("0"))))
 
+G.remove_node("0")
 
-for edge in G._iter_edges():
-    parent = G._get_edge_at(edge.in_edge_parent)
-    cond_left = parent.in_edge_left == edge.position
-    cond_right = parent.in_edge_right == edge.position
-    assert cond_left or cond_right
+for v in list(G_nx.neighbors("0")):
+    G_nx.remove_edge("0", v)
+
+print(list(G.neighbors("0")))
+print(len(list(G_nx.neighbors("0"))))
+
+# G.add_edge("A", "B")
+# print(list(G.neighbors("A")))
+# G.remove_edge("A", "B")
+# print(list(G.neighbors("A")))
 
 
 # nodes = list(G.nodes)
-# for node in tqdm(nodes):
-#     G.remove_node(node)
+# random.shuffle(nodes)
+# for u in nodes:
+#     G.remove_node(u)
+# print(G.n_nodes)
