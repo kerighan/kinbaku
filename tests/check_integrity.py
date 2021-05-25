@@ -38,8 +38,8 @@ edges = EdgeList()  # not efficient
 # =============================================================================
 # ADD AND REMOVE EDGES RANDOMLY
 # probability of a deletion happening
-p_edge_del = .2
-p_node_del = .1
+p_edge_del = .3
+p_node_del = .0
 for _ in tqdm(range(iterations), desc="random edge insertion and deletion"):
     # print(len(G_nx.edges), G_kn.n_edges)
     assert len(G_nx.edges) == G_kn.n_edges
@@ -47,7 +47,7 @@ for _ in tqdm(range(iterations), desc="random edge insertion and deletion"):
 
     draw = random.random()
     if draw < p_edge_del:
-        if len(G_nx.edges) < 1:
+        if len(G_nx.edges) <= 1:
             continue
         u, v = edges.sample()
         edges.remove((u, v))
@@ -62,9 +62,7 @@ for _ in tqdm(range(iterations), desc="random edge insertion and deletion"):
         u, _ = edges.sample()
         try:
             G_nx.remove_node(u)
-            print("prout")
             G_kn.remove_node(u)
-            print("prout")
         except Exception:
             pass
     else:
@@ -101,3 +99,15 @@ for node in tqdm(G_kn.nodes, total=G_kn.n_nodes):
     G_predecessors = set(G_kn.predecessors(node))
     graph_predecessors = set(G_nx.predecessors(node))
     assert G_predecessors == graph_predecessors
+
+# =============================================================================
+# CHECK THAT PARENTING IN NODES WORK
+
+for key in tqdm(G_kn.nodes, total=G_kn.n_nodes):
+    node = G_kn.node(key)
+    if node.parent == 0:
+        continue
+    parent = G_kn._get_node_at(node.parent)
+    cond_left = parent.left == node.position
+    cond_right = parent.right == node.position
+    assert cond_left or cond_right
