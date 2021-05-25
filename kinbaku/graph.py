@@ -2,8 +2,7 @@
 The Graph class allows any string as a node
 Self-loops are allowed but multiple edges of a same edge type are not.
 """
-from .utils import CacheDict, compare_nodes, compare_edge
-from .utils import to_string, stringify_key
+from .utils import CacheDict, compare_nodes, compare_edge, to_string
 from .structure import Edge, Node, Header
 from struct import unpack, pack, error
 import math
@@ -249,6 +248,11 @@ class Graph:
                 f.write(self.EDGE * self.table_increment)
             self._map_to_memory()
             self._get_sizes()
+
+            # insert immovable root node
+            root = self.node_class()
+            root.hash = 2147483648
+            self._set_node_at(root, 0)
         else:
             self._map_to_memory()
             self._get_sizes()
@@ -346,13 +350,17 @@ class Graph:
         position = 0
         while position <= self.header.next_table_position:
             ind = position * self.EDGE_SIZE + self.HEADER_SIZE
-            is_node, = unpack("?", self.mm[ind:ind+1])
+            is_node, exists = unpack("??", self.mm[ind:ind+2])
             if is_node:
                 position += self.NODE_TO_EDGE_RATIO
             else:
+                if not exists:
+                    position += 1
+                    continue
+
                 edge = self._get_edge_at(position)
                 position += 1
-                if not edge.exists or edge.is_edge_start:
+                if edge.is_edge_start:
                     continue
                 yield edge
 
@@ -480,24 +488,20 @@ class Graph:
         if node.right != 0:
             yield from self._node_dfs(self._get_node_at(node.right), as_key)
 
-    def _edge_out_dfs(self, edge, edge_position=None, as_key=True):
+    def _edge_out_dfs(self, edge, as_key=True):
+        if edge.out_edge_left != 0:
+            yield from self._edge_out_dfs(
+                self._get_edge_at(edge.out_edge_left), as_key=as_key)
+        if edge.out_edge_right != 0:
+            yield from self._edge_out_dfs(
+                self._get_edge_at(edge.out_edge_right), as_key=as_key)
+
         if not edge.is_edge_start:
             if as_key:
                 res = self._get_node_at(edge.target_position)
                 yield res.key
             else:
-                yield edge_position, edge
-
-        if edge.out_edge_left != 0:
-            yield from self._edge_out_dfs(
-                self._get_edge_at(edge.out_edge_left),
-                edge_position=edge.out_edge_left,
-                as_key=as_key)
-        if edge.out_edge_right != 0:
-            yield from self._edge_out_dfs(
-                self._get_edge_at(edge.out_edge_right),
-                edge_position=edge.out_edge_right,
-                as_key=as_key)
+                yield edge
 
     def _edge_in_dfs(self, edge):
         if not edge.is_edge_start:
@@ -684,29 +688,30 @@ class Graph:
         v = self._get_node_at(tgt_pos).key
         return u, v
 
-    @stringify_key
     def neighbors(self, key):
         leaf = self.node(key)
         start = self._get_edge_at(leaf.edge_start)
         yield from self._edge_out_dfs(start)
 
-    @stringify_key
     def predecessors(self, key):
         leaf = self.node(key)
         start = self._get_edge_at(leaf.edge_start)
         yield from self._edge_in_dfs(start)
 
-    @stringify_key
     def degree(self, key):
         # returns out-degree
-        return len(self.neighbors(key))
+        count = 0
+        for _ in self.neighbors(key):
+            count += 1
+        return count
 
-    @stringify_key
     def in_degree(self, key):
         # returns in-degree
-        return len(self.predecessors(key))
+        count = 0
+        for _ in self.predecessors(key):
+            count += 1
+        return count
 
-    @stringify_key
     def node(self, key):
         # if key is already a node object
         if isinstance(key, self.node_class):
@@ -738,12 +743,6 @@ class Graph:
         return leaf
 
     def edge(self, source, target, edge_type=0):
-        # stringify inputs
-        if not isinstance(source, str):
-            source = str(source)
-        if not isinstance(target, str):
-            target = str(target)
-
         # get source and target nodes
         source = self.node(source)
         target = self.node(target)
@@ -803,53 +802,23 @@ class Graph:
     # Create & delete Nodes & Edges
     # =========================================================================
 
-    @stringify_key
     def add_node(self, key, attr=None):
         key_hash = self.hash_func(key)
-
-        # check if root node is empty
-        position = 0
-        leaf = self._get_node_at(position)
-        if leaf.index == 0:
-            leaf.index = self.header.node_id
-            leaf.key = key
-            leaf.hash = key_hash
-            leaf.edge_start, recycled = self._get_next_edge_position()
-            self._parse_attributes(leaf, attr)
-
-            self._set_node_at(leaf, position)
-            self._increment_node(False)
-
-            # create self-loop edge for new nodes
-            edge = self.edge_class()
-            edge.source_position = 0
-            edge.hash = key_hash
-            edge.is_edge_start = True
-            edge.position = leaf.edge_start
-            self._set_edge_at(edge, edge.position)
-            self._increment_edge(recycled)
-            return leaf
-
-        # next node insertion position
-        new_position, node_recycled = self._get_next_node_position()
 
         # new node
         node = self.node_class()
         node.index = self.header.node_id
-        node.position = new_position
         node.key = key
         node.hash = key_hash
         self._parse_attributes(node, attr)
 
-        # new edge
-        edge = self.edge_class()
-        edge.source_position = new_position
-        edge.hash = node.hash
-        edge.is_edge_start = True
-
+        # initialize position
         if key in self.cache_key_to_node:
             leaf = self.cache_key_to_node[key]
             position = leaf.position
+        else:
+            leaf = self._get_node_at(0)
+            position = 0
 
         # unroll tree
         while True:
@@ -871,8 +840,7 @@ class Graph:
                     leaf = self._get_node_at(position)
                     continue
             else:  # is equal
-                if node_recycled:
-                    self.node_tombstone.append(new_position)
+                # check equality on a few criteria
                 node.index = leaf.index
                 node.left = leaf.left
                 node.right = leaf.right
@@ -883,6 +851,16 @@ class Graph:
                     return leaf
                 self._set_node_at(node, position)
                 return node
+
+        # get new position
+        new_position, node_recycled = self._get_next_node_position()
+        node.position = new_position
+
+        # new dummy edge
+        edge = self.edge_class()
+        edge.source_position = new_position
+        edge.hash = node.hash
+        edge.is_edge_start = True
 
         # update sizes
         self._increment_node(node_recycled)
@@ -959,7 +937,6 @@ class Graph:
         new_edge.in_edge_parent = prev_in.position
         self._set_edge_at(new_edge, new_edge_position)
         self._increment_edge(recycled)
-
         return new_edge
 
     def remove_edge(self, source, target, edge_type=0):
@@ -971,28 +948,14 @@ class Graph:
         self._remove_edge_from_tree(edge, out=False)
         self._erase_edge_at(edge.position)
 
-    def remove_node(self, source):
-        source = self.node(source)
+    def remove_node(self, source_key):
+        source = self.node(source_key)
         start = self._get_edge_at(source.edge_start)
-        for edge_pos, edge in self._edge_out_dfs(start, as_key=False):
-            target = self.cache_pos_to_node.get(edge.target_position)
-            if target is None:
-                target = self._get_node_at(edge.target_position)
 
-            # =================================================================
-            # OUT direction
-            _, _, edge_out_ant, edge_out_ant_pos, state =   \
-                self._find_edge_out_antecedent(source.edge_start, edge)
-            self._remove_edge_from_tree(edge, out=True)
-
-            # =================================================================
-            # IN direction
-            _, _, edge_in_ant, edge_in_ant_pos, state = \
-                self._find_edge_in_antecedent(target.edge_start, edge)
-            self._remove_edge_from_tree(edge, out=False)
-
-            # erase edge from file
-            self._erase_edge_at(edge_pos)
+        # for edge in edges_to_remove:
+        for edge in self._edge_out_dfs(start, as_key=False):
+            edge = self._get_edge_at(edge.position)
+            self._remove_edge(edge)
 
         # erase node from file
         self._erase_node(source)

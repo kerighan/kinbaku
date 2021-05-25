@@ -70,15 +70,6 @@ def to_string(data):
     return u"".join(chr(c) for c in data if c != 0)
 
 
-def stringify_key(func):
-    def wrapper(*args, **kwargs):
-        if not isinstance(args[1], str):
-            args = list(args)
-            args[1] = str(args[1])
-        return func(*args, **kwargs)
-    return wrapper
-
-
 class CacheDict(OrderedDict):
     """Dict with a limited length, ejecting LRUs as needed."""
 

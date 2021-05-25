@@ -31,6 +31,7 @@ class Edge:
 @dataclass
 class Node:
     is_node: bool = True
+    exists: bool = True
     index: int = 0
     position: int = 0
     parent: int = 0
