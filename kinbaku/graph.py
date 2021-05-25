@@ -919,7 +919,26 @@ class Graph:
 
     def remove_node(self, source):
         source = self.node(source)
-        print(source)
+        start = self._get_edge_at(source.edge_start)
+        for edge_pos, edge in self._edge_dfs(start, as_key=False):
+            target = self.cache_pos_to_node.get(edge.target_position)
+            if target is None:
+                target = self._get_node_at(edge.target_position)
+
+            # =================================================================
+            # OUT direction
+            _, _, edge_out_ant, edge_out_ant_pos, state =   \
+                self._find_edge_out_antecedent(source.edge_start, edge)
+            self._remove_edge_from_tree(
+                edge, edge_pos, edge_out_ant,
+                edge_out_ant_pos, state, out=True)
+
+            # =================================================================
+            # IN direction
+            _, _, edge_in_ant, edge_in_ant_pos, state = \
+                self._find_edge_in_antecedent(target.edge_start, edge)
+            self._remove_edge_from_tree(
+                edge, edge_pos, edge_in_ant, edge_in_ant_pos, state, out=False)
 
     def __setitem__(self, key, attr):
         return self.add_node(key, attr)
