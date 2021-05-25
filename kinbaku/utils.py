@@ -15,17 +15,18 @@ def compare_nodes(key_hash, key_tuple, leaf):
 
 def compare_edge(edge_A, edge_B):
     edge_A_hash = edge_A.hash
-    edge_A_source = edge_A.source
-    edge_A_target = edge_A.target
+    edge_A_source = edge_A.source_position
+    edge_A_target = edge_A.target_position
     edge_A_type = edge_A.type
 
     edge_B_hash = edge_B.hash
-    edge_B_source = edge_B.source
-    edge_B_target = edge_B.target
+    edge_B_source = edge_B.source_position
+    edge_B_target = edge_B.target_position
     edge_B_type = edge_B.type
 
     # edges are equal, return 0
-    if (edge_A_hash == edge_B_hash and
+    if (
+        edge_A_hash == edge_B_hash and
         edge_A_source == edge_B_source and
         edge_A_target == edge_B_target and
         edge_A_type == edge_B_type
@@ -48,7 +49,7 @@ def compare_edge(edge_A, edge_B):
             elif edge_B_type > edge_A_type:
                 return 1
             else:
-                return 0            
+                return 0
         elif edge_B_target < edge_A_target:
             # case where targets are equal
             if edge_B_source < edge_A_source:

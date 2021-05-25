@@ -13,15 +13,18 @@ class Header:
 @dataclass
 class Edge:
     is_node: bool = False
-    source: int = 0
-    target: int = 0
+    exists: bool = True
+    is_edge_start: bool = False
+    position: int = 0
     source_position: int = 0
     target_position: int = 0
     hash: int = 0
     out_edge_left: int = 0
     out_edge_right: int = 0
+    out_edge_parent: int = 0
     in_edge_left: int = 0
     in_edge_right: int = 0
+    in_edge_parent: int = 0
     type: int = 0
 
 
@@ -30,6 +33,7 @@ class Node:
     is_node: bool = True
     index: int = 0
     position: int = 0
+    parent: int = 0
     left: int = 0
     right: int = 0
     hash: int = 0
