@@ -430,54 +430,6 @@ class Graph:
             successor = self._get_edge_at(successor_position)
         return (successor, antecedent)
 
-    def _find_edge_out_antecedent(self, position, edge):
-        current_edge = self._get_edge_at(position)
-        while True:
-            state = compare_edge(current_edge, edge)
-            if state == -1:
-                previous_edge = current_edge
-                previous_pos = position
-                position = current_edge.out_edge_left
-                current_edge = self._get_edge_at(position)
-                previous_state = -1
-            elif state == 1:
-                previous_edge = current_edge
-                previous_pos = position
-                position = current_edge.out_edge_right
-                current_edge = self._get_edge_at(position)
-                previous_state = 1
-            else:
-                break
-            if current_edge.target == 0:
-                raise KeyError("Edge does not exist")
-        return (
-            current_edge, position,
-            previous_edge, previous_pos, previous_state)
-
-    def _find_edge_in_antecedent(self, position, edge):
-        current_edge = self._get_edge_at(position)
-        while True:
-            state = compare_edge(current_edge, edge)
-            if state == -1:
-                previous_edge = current_edge
-                previous_pos = position
-                position = current_edge.in_edge_left
-                current_edge = self._get_edge_at(position)
-                previous_state = -1
-            elif state == 1:
-                previous_edge = current_edge
-                previous_pos = position
-                position = current_edge.in_edge_right
-                current_edge = self._get_edge_at(position)
-                previous_state = 1
-            else:
-                break
-            if position == 0:
-                raise KeyError("Edge does not exist")
-        return (
-            current_edge, position,
-            previous_edge, previous_pos, previous_state)
-
     def _node_dfs(self, node, as_key=False):
         if node.index != 0:
             if as_key:
