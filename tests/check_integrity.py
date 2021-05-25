@@ -38,13 +38,36 @@ edges = EdgeList()  # not efficient
 # =============================================================================
 # ADD AND REMOVE EDGES RANDOMLY
 # probability of a deletion happening
-p_del = .3
+p_edge_del = .2
+p_node_del = .1
 for _ in tqdm(range(iterations), desc="random edge insertion and deletion"):
+    # print(len(G_nx.edges), G_kn.n_edges)
     assert len(G_nx.edges) == G_kn.n_edges
     assert len(G_nx.nodes) == G_kn.n_nodes
 
     draw = random.random()
-    if draw > p_del:
+    if draw < p_edge_del:
+        if len(G_nx.edges) < 1:
+            continue
+        u, v = edges.sample()
+        edges.remove((u, v))
+        try:
+            G_kn.remove_edge(u, v)
+            G_nx.remove_edge(u, v)
+        except Exception:
+            pass
+    elif draw < p_edge_del + p_node_del:
+        if len(G_nx.edges) < 1:
+            continue
+        u, _ = edges.sample()
+        try:
+            G_nx.remove_node(u)
+            print("prout")
+            G_kn.remove_node(u)
+            print("prout")
+        except Exception:
+            pass
+    else:
         # create a random edge
         u = str(random.randint(0, N-1))
         v = str(random.randint(0, N-1))
@@ -52,12 +75,6 @@ for _ in tqdm(range(iterations), desc="random edge insertion and deletion"):
         edges.add((u, v))  # this is the reason of the performance drop
         G_kn.add_edge(u, v)
         G_nx.add_edge(u, v)
-    else:
-        if len(G_nx.edges) >= 1:
-            u, v = edges.sample()
-            G_kn.remove_edge(u, v)
-            G_nx.remove_edge(u, v)
-            edges.remove((u, v))
 
 # =============================================================================
 # CHECK THAT TOMBSTONES CAN BE FOUND

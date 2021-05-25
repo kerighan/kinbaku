@@ -311,10 +311,22 @@ class Graph:
         self.header.n_edges -= 1
         self._expand()
 
-    def _cache_node(self, key, node):
-        self.cache_key_to_node[key] = node
-        self.cache_id_to_key[node.index] = key
+    def _decrement_node(self):
+        self.header.n_nodes -= 1
+        self._expand()
+
+    def _cache_node(self, node):
+        self.cache_key_to_node[node.key] = node
+        self.cache_id_to_key[node.index] = node.key
         self.cache_pos_to_node[node.position] = node
+
+    def _uncache_node(self, node):
+        try:
+            del self.cache_key_to_node[node.key]
+            del self.cache_id_to_key[node.index]
+            del self.cache_pos_to_node[node.position]
+        except KeyError:
+            pass
 
     def empty_cache(self):
         self.cache_id_to_key = {}  # important
@@ -468,24 +480,33 @@ class Graph:
                 yield node
 
         # store in cache
-        self._cache_node(node.key, node)
+        self._cache_node(node)
 
         if node.left != 0:
             yield from self._node_dfs(self._get_node_at(node.left), as_key)
         if node.right != 0:
             yield from self._node_dfs(self._get_node_at(node.right), as_key)
 
-    def _edge_dfs(self, edge):
+    def _edge_dfs(self, edge, edge_position=None, as_key=True):
         if edge.target != 0:
-            res = self.cache_id_to_key.get(edge.target)
-            if res is None:
-                res = self._get_node_at(edge.target_position).key
-            yield res
+            if as_key:
+                res = self.cache_id_to_key.get(edge.target)
+                if res is None:
+                    res = self._get_node_at(edge.target_position).key
+                yield res
+            else:
+                yield edge_position, edge
 
         if edge.out_edge_left != 0:
-            yield from self._edge_dfs(self._get_edge_at(edge.out_edge_left))
+            yield from self._edge_dfs(
+                self._get_edge_at(edge.out_edge_left),
+                edge_position=edge.out_edge_left,
+                as_key=as_key)
         if edge.out_edge_right != 0:
-            yield from self._edge_dfs(self._get_edge_at(edge.out_edge_right))
+            yield from self._edge_dfs(
+                self._get_edge_at(edge.out_edge_right),
+                edge_position=edge.out_edge_right,
+                as_key=as_key)
 
     def _edge_in_dfs(self, edge):
         if edge.target != 0:
@@ -617,7 +638,7 @@ class Graph:
         node = self.node_class(*res)
 
         if node.index not in self.cache_id_to_key:
-            self._cache_node(node.key, node)
+            self._cache_node(node)
         return node
 
     def _get_edge_at(self, position):
@@ -694,7 +715,7 @@ class Graph:
                     raise KeyError(f"Node {key} does not exist")
                 leaf = self._get_node_at(leaf.right)
             state = compare_nodes(key_hash, key, leaf)
-        self._cache_node(key, leaf)
+        self._cache_node(leaf)
         return leaf
 
     def __getitem__(self, key):
@@ -708,7 +729,7 @@ class Graph:
         values = self._parse_values(leaf)
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         self.mm[ind:ind+self.NODE_SIZE] = pack(self.NODE_FORMAT, *values)
-        self._cache_node(leaf.key, leaf)
+        self._cache_node(leaf)
 
     def _set_edge_at(self, edge, position):
         values = self._parse_values(edge)
@@ -719,6 +740,18 @@ class Graph:
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         self.mm[ind:ind+self.EDGE_SIZE] = self.EDGE
         self.edge_tombstone.append(position)
+        self._decrement_edge()
+
+    def _erase_node(self, node):
+        self._uncache_node(node)
+        ind = node.position * self.EDGE_SIZE + self.HEADER_SIZE
+        self.mm[ind:ind+self.NODE_SIZE] = self.NODE
+        self.node_tombstone.append(node.position)
+        self._decrement_node()
+        # also remove edge start
+        ind = node.edge_start * self.EDGE_SIZE + self.HEADER_SIZE
+        self.mm[ind:ind+self.EDGE_SIZE] = self.EDGE
+        self.edge_tombstone.append(node.edge_start)
         self._decrement_edge()
 
     # =========================================================================
@@ -930,15 +963,22 @@ class Graph:
             _, _, edge_out_ant, edge_out_ant_pos, state =   \
                 self._find_edge_out_antecedent(source.edge_start, edge)
             self._remove_edge_from_tree(
-                edge, edge_pos, edge_out_ant,
-                edge_out_ant_pos, state, out=True)
+                edge, edge_pos, edge_out_ant, edge_out_ant_pos,
+                state, out=True)
 
             # =================================================================
             # IN direction
             _, _, edge_in_ant, edge_in_ant_pos, state = \
                 self._find_edge_in_antecedent(target.edge_start, edge)
             self._remove_edge_from_tree(
-                edge, edge_pos, edge_in_ant, edge_in_ant_pos, state, out=False)
+                edge, edge_pos, edge_in_ant, edge_in_ant_pos,
+                state, out=False)
+
+            # erase edge from file
+            self._erase_edge_at(edge_pos)
+
+        # erase node from file
+        self._erase_node(source)
 
     def __setitem__(self, key, attr):
         return self.add_node(key, attr)
