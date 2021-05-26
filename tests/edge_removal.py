@@ -7,7 +7,7 @@ import random
 G = kn.Graph("test.db", overwrite=True)
 
 # create random connections
-N = 10000
+N = 100000
 M = 50 * N
 for _ in tqdm(range(M)):
     u = str(random.randint(0, N-1))

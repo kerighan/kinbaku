@@ -22,8 +22,6 @@ print(len(list(G.neighbors("0"))))
 
 G.remove_node("0")
 
-for v in list(G_nx.neighbors("0")):
-    G_nx.remove_edge("0", v)
 
 print(list(G.neighbors("0")))
 print(len(list(G_nx.neighbors("0"))))
