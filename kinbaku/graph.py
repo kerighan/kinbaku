@@ -26,7 +26,6 @@ class Graph:
         preload=False,
         node_class=None,
         edge_class=None,
-        overwrite=False,
         flag="w"
     ):
         """Initialize a directed graph. A file is automatically created
@@ -60,10 +59,10 @@ class Graph:
             edge_class (dataclass, optional): the dataclass that defines
                                               custom edge attributes.
                                               Defaults to None.
-            overwrite (bool, optional): if True, the file is emptyed at
-                                        initialization. Defaults to False.
-            flag (str, optional): "w" for reading and writing and "r" for
-                                  reading only. Defaults to "w".
+            flag (str, optional): "w" for reading and writing,
+                                  "r" for reading only,
+                                  "n" for new (overwrite).
+                                  Defaults to "w".
 
         Examples
         --------
@@ -114,7 +113,7 @@ class Graph:
         self._init_header_size()
 
         # mmap file
-        self._load_file(overwrite)
+        self._load_file()
 
     # =========================================================================
     # Properties
@@ -142,7 +141,8 @@ class Graph:
     def nodes(self):
         position = 0
         leaf = self._get_node_at(position)
-        yield from self._node_dfs(leaf, as_key=True)
+        for node in self._node_dfs(leaf):
+            yield node.key
 
     @property
     def edges(self):
@@ -245,8 +245,8 @@ class Graph:
     # File & memory management
     # =========================================================================
 
-    def _load_file(self, overwrite):
-        if not os.path.exists(self.filename) or overwrite:
+    def _load_file(self):
+        if not os.path.exists(self.filename) or self.flag == "n":
             with open(self.filename, "wb") as f:
                 f.write(self.HEADER)
                 f.write(self.NODE_PLACEHOLDER)
@@ -267,7 +267,7 @@ class Graph:
 
     def _map_to_memory(self):
         with open(self.filename, "r+b") as f:
-            if self.flag == "w":
+            if self.flag == "w" or self.flag == "n":
                 self.mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_WRITE)
             else:
                 self.mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
@@ -413,62 +413,53 @@ class Graph:
                 break
         return current_edge, state
 
-    def _find_inorder_successor(self, edge, out=True):
-        if out:
-            edge_right = edge.out_edge_right
-            left = "out_edge_left"
-        else:
-            edge_right = edge.in_edge_right
-            left = "in_edge_left"
-
+    def _find_inorder_successor_edge(self, edge, out=True):
+        edge_right = edge.out_edge_right if out else edge.in_edge_right
+        left = "out_edge_left" if out else "in_edge_left"
         successor = self._get_edge_at(edge_right)
         antecedent = edge
-
         while getattr(successor, left) != 0:
             antecedent = successor
-            successor_position = getattr(successor, left)
-            successor = self._get_edge_at(successor_position)
+            successor = self._get_edge_at(getattr(successor, left))
         return (successor, antecedent)
 
-    def _node_dfs(self, node, as_key=False):
+    def _find_inorder_successor_node(self, node):
+        successor = self._get_node_at(node.right)
+        antecedent = node
+        while successor.left != 0:
+            antecedent = successor
+            successor = self._get_edge_at(successor.left)
+        return (successor, antecedent)
+
+    def _node_dfs(self, node):
         if node.index != 0:
-            if as_key:
-                yield node.key
-            else:
-                yield node
+            yield node
 
         # store in cache
         self._cache_node(node)
 
         if node.left != 0:
-            yield from self._node_dfs(self._get_node_at(node.left), as_key)
+            yield from self._node_dfs(self._get_node_at(node.left))
         if node.right != 0:
-            yield from self._node_dfs(self._get_node_at(node.right), as_key)
+            yield from self._node_dfs(self._get_node_at(node.right))
 
-    def _edge_out_dfs(self, edge, as_key=True):
+    def _edge_out_dfs(self, edge):
         if edge.out_edge_left != 0:
             yield from self._edge_out_dfs(
-                self._get_edge_at(edge.out_edge_left), as_key=as_key)
+                self._get_edge_at(edge.out_edge_left))
         if edge.out_edge_right != 0:
             yield from self._edge_out_dfs(
-                self._get_edge_at(edge.out_edge_right), as_key=as_key)
-
+                self._get_edge_at(edge.out_edge_right))
         if not edge.is_edge_start:
-            if as_key:
-                res = self._get_node_at(edge.target_position)
-                yield res.key
-            else:
-                yield edge
+            yield edge
 
     def _edge_in_dfs(self, edge):
-        if not edge.is_edge_start:
-            res = self._get_node_at(edge.source_position)
-            yield res.key
-
         if edge.in_edge_left != 0:
             yield from self._edge_in_dfs(self._get_edge_at(edge.in_edge_left))
         if edge.in_edge_right != 0:
             yield from self._edge_in_dfs(self._get_edge_at(edge.in_edge_right))
+        if not edge.is_edge_start:
+            yield edge
 
     def _unplug(self, parent, state, out=True):
         if state == -1:  # edge came from left
@@ -501,6 +492,84 @@ class Graph:
         self._set_edge_at(parent, parent.position)
         self._set_edge_at(child, child.position)
 
+    def _remove_node_from_tree(self, node):
+        # case 1: node to remove has no child
+        parent = self._get_node_at(node.parent)
+        assert parent.left == node.position or parent.right == node.position
+
+        state = -1 if parent.left == node.position else 1
+        if node.left == 0 and node.right == 0:
+            if state == -1:
+                parent.left = 0
+            else:
+                parent.right = 0
+            self._set_node_at(parent, parent.position)
+        elif node.left == 0:
+            child = self._get_node_at(node.right)
+            child.parent = parent.position
+            if state == -1:
+                parent.left = child.position
+            else:
+                parent.right = child.position
+            self._set_node_at(child, child.position)
+            self._set_node_at(parent, parent.position)
+        elif node.right == 0:
+            child = self._get_node_at(node.left)
+            child.parent = parent.position
+            if state == -1:
+                parent.left = child.position
+            else:
+                parent.right = child.position
+            self._set_node_at(child, child.position)
+            self._set_node_at(parent, parent.position)
+        else:
+            successor, antecedent = self._find_inorder_successor_node(node)
+            # remove antecedent link to successor
+            antecedent.left = 0
+            # set successor's parent to parent
+            successor.parent = parent.position
+            if state == -1:
+                parent.left = successor.position
+            else:
+                parent.right = successor.position
+
+            # case a: antecedent happens to be the node to remove
+            if antecedent.position == node.position:
+                successor.left = node.left
+                node_left_item = self._get_node_at(node.left)
+                node_left_item.parent = successor.position
+
+                self._set_node_at(node_left_item, node.left)
+                self._set_node_at(successor, successor.position)
+                self._set_node_at(parent, parent.position)
+            # case b: antecedent is further down
+            else:
+                # put left tree in left child of successor
+                successor.left = node.left
+                node_left_item = self._get_node_at(node.left)
+                node_left_item.parent = successor.position
+                self._set_node_at(node_left_item, node.left)
+
+                if node.right == antecedent.position:
+                    antecedent.parent = successor.position
+                else:
+                    node_right_item = self._get_node_at(node.right)
+                    node_right_item.position = successor.position
+                    self._set_node_at(node_right_item, node.right)
+
+                # put right tree of successor to antecdent left tree
+                successor_right_pos = successor.right
+                antecedent.left = successor_right_pos
+                self._set_node_at(antecedent, antecedent.position)
+                if successor_right_pos != 0:
+                    successor_right = self._get_node_at(successor_right_pos)
+                    successor_right.parent = antecedent.position
+                    self._set_node_at(successor_right, successor_right_pos)
+
+                successor.right = node.right
+                self._set_node_at(successor, successor.position)
+                self._set_node_at(parent, parent.position)
+
     def _remove_edge_from_tree(self, edge, out=True):
         # utilitary variables
         if out:
@@ -525,7 +594,8 @@ class Graph:
             self._rewire(parent, child, state, out)
         # case 3: edge to remove has two children
         else:
-            successor, antecedent = self._find_inorder_successor(edge, out=out)
+            successor, antecedent = (
+                self._find_inorder_successor_edge(edge, out=out))
             right = "out_edge_right" if out else "in_edge_right"
             left = "out_edge_left" if out else "in_edge_left"
             up = "out_edge_parent" if out else "in_edge_parent"
@@ -648,14 +718,18 @@ class Graph:
     def neighbors(self, key):
         leaf = self.node(key)
         start = self._get_edge_at(leaf.edge_start)
-        yield from self._edge_out_dfs(start)
+        for edge in self._edge_out_dfs(start):
+            res = self._get_node_at(edge.target_position)
+            yield res.key
 
     def predecessors(self, key):
         leaf = self.node(key)
         start = self._get_edge_at(leaf.edge_start)
-        yield from self._edge_in_dfs(start)
+        for edge in self._edge_in_dfs(start):
+            res = self._get_node_at(edge.source_position)
+            yield res.key
 
-    def degree(self, key):
+    def out_degree(self, key):
         # returns out-degree
         count = 0
         for _ in self.neighbors(key):
@@ -910,11 +984,12 @@ class Graph:
         start = self._get_edge_at(source.edge_start)
 
         # for edge in edges_to_remove:
-        for edge in self._edge_out_dfs(start, as_key=False):
+        for edge in self._edge_out_dfs(start):
             edge = self._get_edge_at(edge.position)
             self._remove_edge(edge)
 
         # erase node from file
+        self._remove_node_from_tree(source)
         self._erase_node(source)
 
     def __setitem__(self, key, attr):

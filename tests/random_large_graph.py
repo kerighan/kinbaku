@@ -3,7 +3,7 @@ from tqdm import tqdm
 import random
 
 
-G = kn.Graph("test.db", overwrite=True)
+G = kn.Graph("test.db", flag="n")
 
 # create random edges
 N = 1000000  # number of nodes

@@ -4,7 +4,7 @@ import random
 
 
 # create graph
-G = kn.Graph("test.db", overwrite=True)
+G = kn.Graph("test.db", flag="n")
 
 # create random connections
 N = 100000

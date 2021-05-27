@@ -28,7 +28,7 @@ class EdgeList(object):
 
 
 # create graphs
-G_kn = kn.Graph("test.db", overwrite=True)
+G_kn = kn.Graph("test.db", flag="n")
 G_nx = nx.DiGraph()
 
 N = 10000
