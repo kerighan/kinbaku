@@ -7,21 +7,18 @@ import random
 G = kn.Graph("test.db", flag="n")
 
 # create random connections
-N = 100000
-M = 50 * N
-for _ in tqdm(range(M)):
+N = 100
+M = 500 * N
+for _ in tqdm(range(M), desc="inserting edges"):
     u = str(random.randint(0, N-1))
     v = str(random.randint(0, N-1))
     G.add_edge(u, v)
 
 # remove edges in a random order
-edges = list(G.edges)
-random.shuffle(edges)
-for u, v in tqdm(edges, total=G.n_edges):
-    G.remove_edge(u, v)
+nodes = list(G.nodes)
+random.shuffle(nodes)
+for u in tqdm(nodes, total=G.n_nodes, desc="removing nodes"):
+    G.remove_node(u)
 
 # check that everything works as expected
-assert G.n_edges == 0
-len(list(G.edges)) == 0
-for node in G.nodes:
-    assert len(list(G.neighbors(node))) == 0
+assert G.n_nodes == 0

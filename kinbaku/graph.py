@@ -428,7 +428,7 @@ class Graph:
         antecedent = node
         while successor.left != 0:
             antecedent = successor
-            successor = self._get_edge_at(successor.left)
+            successor = self._get_node_at(successor.left)
         return (successor, antecedent)
 
     def _node_dfs(self, node):
@@ -495,7 +495,21 @@ class Graph:
     def _remove_node_from_tree(self, node):
         # case 1: node to remove has no child
         parent = self._get_node_at(node.parent)
-        assert parent.left == node.position or parent.right == node.position
+        if not parent.exists:
+            print(parent)
+        if not node.exists:
+            print(node)
+            raise ValueError
+
+        try:
+            assert (parent.left == node.position or
+                    parent.right == node.position)
+        except AssertionError:
+            print()
+            print(parent)
+            print(node)
+            print(self._get_node_at(node.parent))
+            raise AssertionError
 
         state = -1 if parent.left == node.position else 1
         if node.left == 0 and node.right == 0:
@@ -524,6 +538,13 @@ class Graph:
             self._set_node_at(parent, parent.position)
         else:
             successor, antecedent = self._find_inorder_successor_node(node)
+            if not antecedent.exists:
+                print("antecedent")
+                raise ValueError
+            if not successor.exists:
+                print("successor")
+                raise ValueError
+
             # remove antecedent link to successor
             antecedent.left = 0
             # set successor's parent to parent
