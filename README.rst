@@ -63,30 +63,30 @@ Using custom attributes
 With Kinbaku, nodes and edges can have custom attributes. The way to proceed is to create Python dataclasses that inherit from Kinbaku structures.
 
 .. code:: python
-    from dataclasses import dataclass
-    import kinbaku as kn
-
-
-    @dataclass
-    class User(kn.structure.Node):
-        age: int = 0
-        bio: str = ""
-
-
-    @dataclass
-    class Relation(kn.structure.Edge):
-        weight: float = 0
-
-
-    G = kn.Graph("graph_with_attributes.db",
-                node_class=User,
-                edge_class=Relation,
-                max_str_len=40)  # max string length
-
-    # using the 'add_node' method:
-    G.add_node("Mark", {"age": 25, "bio": "first text"})
-    # or using '__setitem__':
-    G["Mary"] = {"age": 32, "bio": "second text"}
-
-    # adding an edge with custom attributes:
-    G.add_edge("Mark", "Mary", {"weight": .1})
+    >>> from dataclasses import dataclass
+    >>> import kinbaku as kn
+    >>> 
+    >>> 
+    >>> @dataclass
+    >>> class User(kn.structure.Node):
+        >>> age: int = 0
+        >>> bio: str = ""
+    >>> 
+    >>> 
+    >>> @dataclass
+    >>> class Relation(kn.structure.Edge):
+        >>> weight: float = 0
+    >>> 
+    >>> 
+    >>> G = kn.Graph("graph_with_attributes.db",
+                >>> node_class=User,
+                >>> edge_class=Relation,
+                >>> max_str_len=40)  # max string length
+    >>> 
+    >>> # using the 'add_node' method:
+    >>> G.add_node("Mark", {"age": 25, "bio": "first text"})
+    >>> # or using '__setitem__':
+    >>> G["Mary"] = {"age": 32, "bio": "second text"}
+    >>> 
+    >>> # adding an edge with custom attributes:
+    >>> G.add_edge("Mark", "Mary", {"weight": .1})
