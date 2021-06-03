@@ -7,6 +7,8 @@ import mmap
 import os
 from struct import error, pack, unpack
 
+from .exception import (EdgeNotFound, KinbakuError, KinbakuException,
+                        NodeNotFound)
 from .structure import Edge, Header, Node
 from .utils import CacheDict, compare_edge, compare_nodes, to_string
 
@@ -794,11 +796,11 @@ class Graph:
         while state != 0:
             if state == -1:
                 if leaf.left == 0:
-                    raise KeyError(f"Node {key} does not exist")
+                    raise NodeNotFound(f"Node {key} does not exist")
                 leaf = self._get_node_at(leaf.left)
             else:
                 if leaf.right == 0:
-                    raise KeyError(f"Node {key} does not exist")
+                    raise NodeNotFound(f"Node {key} does not exist")
                 leaf = self._get_node_at(leaf.right)
             state = compare_nodes(key_hash, key, leaf)
         self._cache_node(leaf)
@@ -821,7 +823,7 @@ class Graph:
         # edge already exists
         if state == 0:
             return edge
-        raise KeyError(f"Edge {source.key} -> {target.key} not found")
+        raise EdgeNotFound(f"Edge {source.key} -> {target.key} not found")
 
     def has_edge(self, source, target, edge_type=0):
         try:
@@ -852,7 +854,7 @@ class Graph:
                 return self.has_edge(key[0], key[1], key[2])
         elif isinstance(key, str):
             return self.has_node(key)
-        raise KeyError("argument not understood")
+        raise KinbakuException("argument not understood")
 
     # =========================================================================
     # Setters
@@ -993,7 +995,6 @@ class Graph:
         # =====================================================================
         # OUT direction
         prev_out, state = self._find_edge_out_pos(source.edge_start, new_edge)
-
         if state == 0:  # edge already exists
             return prev_out
         else:
@@ -1016,7 +1017,7 @@ class Graph:
         elif state == 1:
             prev_in.in_edge_right = new_edge_position
         else:  # edge shouldn't exist
-            raise ValueError("strange")
+            raise KinbakuError("serious integrity error")
         # update previous in-edge
         self._set_edge_at(prev_in, prev_in.position)
 

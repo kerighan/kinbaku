@@ -45,7 +45,7 @@ def test_neighbors(G, G_nx, nodes):
         G.add_edge(u, v)
 
     for u in G_nx.nodes:
-        G.has_node(u)
+        assert u in G
 
     for u, v in G.edges:
         assert G_nx.has_edge(u, v)
