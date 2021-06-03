@@ -2,12 +2,13 @@
 The Graph class allows any string as a node
 Self-loops are allowed but multiple edges of a same edge type are not.
 """
-from .utils import CacheDict, compare_nodes, compare_edge, to_string
-from .structure import Edge, Node, Header
-from struct import unpack, pack, error
 import math
 import mmap
 import os
+from struct import error, pack, unpack
+
+from .structure import Edge, Header, Node
+from .utils import CacheDict, compare_edge, compare_nodes, to_string
 
 
 class Graph:
@@ -26,7 +27,7 @@ class Graph:
         preload=False,
         node_class=None,
         edge_class=None,
-        flag="w"
+        flag="w",
     ):
         """Initialize a directed graph. A file is automatically created
         if the path provided by the filename argument does not exist.
@@ -76,6 +77,7 @@ class Graph:
 
         if hash_func is None:
             from cityhash import CityHash32
+
             self.hash_func = CityHash32
         else:
             self.hash_func = hash_func
@@ -174,7 +176,7 @@ class Graph:
                 DATA_VALUES.append(False)
             elif field.type == float:
                 DATA_FORMAT += "f"
-                DATA_VALUES.append(0.)
+                DATA_VALUES.append(0.0)
         return DATA_FORMAT, DATA_VALUES
 
     def _parse_values(self, data):
@@ -215,12 +217,11 @@ class Graph:
         self.NODE_SIZE = len(self.NODE)
 
         self.NODE_TO_EDGE_RATIO = math.ceil(self.NODE_SIZE / self.EDGE_SIZE)
-        self.NODE_PLACEHOLDER_SIZE = (
-            self.NODE_TO_EDGE_RATIO * self.EDGE_SIZE)
+        self.NODE_PLACEHOLDER_SIZE = self.NODE_TO_EDGE_RATIO * self.EDGE_SIZE
         # pad placeholder with 0s
-        self.NODE_PLACEHOLDER = (
-            self.NODE +
-            b'\x00' * (self.NODE_PLACEHOLDER_SIZE - self.NODE_SIZE))
+        self.NODE_PLACEHOLDER = self.NODE + b"\x00" * (
+            self.NODE_PLACEHOLDER_SIZE - self.NODE_SIZE
+        )
 
     def _init_header_size(self):
         HEADER_FORMAT = ""
@@ -229,8 +230,9 @@ class Graph:
             if field.type == int:
                 HEADER_FORMAT += self.int_format
             if name == "table_size":
-                HEADER_VALUES.append(self.table_increment +
-                                     self.NODE_TO_EDGE_RATIO)
+                HEADER_VALUES.append(
+                    self.table_increment + self.NODE_TO_EDGE_RATIO
+                )
             elif name == "node_id":
                 HEADER_VALUES.append(1)
             elif name == "next_table_position":
@@ -274,11 +276,12 @@ class Graph:
 
     def _expand(self):
         if (
-            self.header.next_table_position <=
-            self.header.table_size - .1 * self.table_increment
+            self.header.next_table_position
+            <= self.header.table_size - 0.1 * self.table_increment
         ):
-            self.mm[:self.HEADER_SIZE] = pack(
-                self.HEADER_FORMAT, *self._parse_values(self.header))
+            self.mm[: self.HEADER_SIZE] = pack(
+                self.HEADER_FORMAT, *self._parse_values(self.header)
+            )
             return
 
         with open(self.filename, "ab") as f:
@@ -286,9 +289,9 @@ class Graph:
 
         # add increment to table_size
         self.header.table_size += self.table_increment
-        self.mm[:self.HEADER_SIZE] = pack(
-            self.HEADER_FORMAT,
-            *self._parse_values(self.header))
+        self.mm[: self.HEADER_SIZE] = pack(
+            self.HEADER_FORMAT, *self._parse_values(self.header)
+        )
         self._map_to_memory()
 
     def _increment_node(self, recycled):
@@ -336,8 +339,9 @@ class Graph:
         size = len(pack("?" + self.int_format, 0, 0))
         while position <= self.header.next_table_position:
             ind = position * self.EDGE_SIZE + self.HEADER_SIZE
-            is_node, index = unpack("?" + self.int_format,
-                                    self.mm[ind:ind+size])
+            is_node, index = unpack(
+                "?" + self.int_format, self.mm[ind: ind + size]
+            )
             if is_node:
                 if index == 0:
                     self.node_tombstone.append(position)
@@ -355,7 +359,7 @@ class Graph:
         position = 0
         while position <= self.header.next_table_position:
             ind = position * self.EDGE_SIZE + self.HEADER_SIZE
-            is_node, exists = unpack("??", self.mm[ind:ind+2])
+            is_node, exists = unpack("??", self.mm[ind: ind + 2])
             if is_node:
                 position += self.NODE_TO_EDGE_RATIO
             else:
@@ -502,8 +506,8 @@ class Graph:
             raise ValueError
 
         try:
-            assert (parent.left == node.position or
-                    parent.right == node.position)
+            node_pos = node.position
+            assert parent.left == node_pos or parent.right == node_pos
         except AssertionError:
             print()
             print(parent)
@@ -615,8 +619,9 @@ class Graph:
             self._rewire(parent, child, state, out)
         # case 3: edge to remove has two children
         else:
-            successor, antecedent = (
-                self._find_inorder_successor_edge(edge, out=out))
+            successor, antecedent = self._find_inorder_successor_edge(
+                edge, out=out
+            )
             right = "out_edge_right" if out else "in_edge_right"
             left = "out_edge_left" if out else "in_edge_left"
             up = "out_edge_parent" if out else "in_edge_parent"
@@ -685,7 +690,7 @@ class Graph:
         return self.edge_tombstone.pop(0), recycled
 
     def _get_sizes(self):
-        data = unpack(self.HEADER_FORMAT, self.mm[:self.HEADER_SIZE])
+        data = unpack(self.HEADER_FORMAT, self.mm[: self.HEADER_SIZE])
         self.header = Header(*data)
 
     def _get_node_at(self, position):
@@ -695,10 +700,10 @@ class Graph:
 
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         try:
-            data = unpack(self.NODE_FORMAT, self.mm[ind:ind+self.NODE_SIZE])
+            data = unpack(self.NODE_FORMAT, self.mm[ind: ind + self.NODE_SIZE])
         except error:
             self._map_to_memory()
-            data = unpack(self.NODE_FORMAT, self.mm[ind:ind+self.NODE_SIZE])
+            data = unpack(self.NODE_FORMAT, self.mm[ind: ind + self.NODE_SIZE])
 
         i = 0
         res = []
@@ -707,10 +712,10 @@ class Graph:
                 res.append(data[i])
                 i += 1
             elif field.name == "key":
-                res.append(to_string(data[i:i+self.max_key_len]))
+                res.append(to_string(data[i: i + self.max_key_len]))
                 i += self.max_key_len
             elif field.type == str:
-                res.append(to_string(data[i:i+self.max_str_len]))
+                res.append(to_string(data[i: i + self.max_str_len]))
                 i += self.max_str_len
         node = self.node_class(*res)
 
@@ -720,13 +725,14 @@ class Graph:
 
     def _get_edge_at(self, position):
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
-        data = unpack(self.EDGE_FORMAT, self.mm[ind:ind+self.EDGE_SIZE])
+        data = unpack(self.EDGE_FORMAT, self.mm[ind: ind + self.EDGE_SIZE])
         edge = self.edge_class(*data)
         return edge
 
     def _get_edge_hash(self, source, target, edge_type):
         return self.hash_func(
-            str(source.hash) + "_" + str(edge_type) + "_" + str(target.hash))
+            str(source.hash) + "_" + str(edge_type) + "_" + str(target.hash)
+        )
 
     def _get_keys_from_edge(self, edge):
         src_pos = edge.source_position
@@ -806,8 +812,7 @@ class Graph:
         new_edge.hash = self._get_edge_hash(source, target, edge_type)
         new_edge.type = edge_type
 
-        edge, state = self._find_edge_out_pos(
-            source.edge_start, new_edge)
+        edge, state = self._find_edge_out_pos(source.edge_start, new_edge)
 
         # edge already exists
         if state == 0:
@@ -824,29 +829,29 @@ class Graph:
     def _set_node_at(self, leaf, position):
         values = self._parse_values(leaf)
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
-        self.mm[ind:ind+self.NODE_SIZE] = pack(self.NODE_FORMAT, *values)
+        self.mm[ind: ind + self.NODE_SIZE] = pack(self.NODE_FORMAT, *values)
         self._cache_node(leaf)
 
     def _set_edge_at(self, edge, position):
         values = self._parse_values(edge)
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
-        self.mm[ind:ind+self.EDGE_SIZE] = pack(self.EDGE_FORMAT, *values)
+        self.mm[ind: ind + self.EDGE_SIZE] = pack(self.EDGE_FORMAT, *values)
 
     def _erase_edge_at(self, position):
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
-        self.mm[ind:ind+self.EDGE_SIZE] = self.EDGE
+        self.mm[ind: ind + self.EDGE_SIZE] = self.EDGE
         self.edge_tombstone.append(position)
         self._decrement_edge()
 
     def _erase_node(self, node):
         self._uncache_node(node)
         ind = node.position * self.EDGE_SIZE + self.HEADER_SIZE
-        self.mm[ind:ind+self.NODE_SIZE] = self.NODE
+        self.mm[ind: ind + self.NODE_SIZE] = self.NODE
         self.node_tombstone.append(node.position)
         self._decrement_node()
         # also remove edge start
         ind = node.edge_start * self.EDGE_SIZE + self.HEADER_SIZE
-        self.mm[ind:ind+self.EDGE_SIZE] = self.EDGE
+        self.mm[ind: ind + self.EDGE_SIZE] = self.EDGE
         self.edge_tombstone.append(node.edge_start)
         self._decrement_edge()
 
