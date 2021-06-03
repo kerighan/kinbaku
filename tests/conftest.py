@@ -6,14 +6,12 @@ def pytest_addoption(parser):
         "--nodes",
         help="number of nodes",
         default=100,
-        type=int
-    )
+        type=int)
     parser.addoption(
         "--degree",
         help="average node degree",
         default=10,
-        type=int
-    )
+        type=int)
 
 
 @pytest.fixture()

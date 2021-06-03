@@ -56,3 +56,7 @@ def test_neighbors(G, G_nx, nodes):
         neighbors_found = set(G.neighbors(node))
         neighbors_true = set(G_nx.neighbors(node))
         assert neighbors_found == neighbors_true
+
+        predecessors_found = set(G.predecessors(node))
+        predecessors_true = set(G_nx.predecessors(node))
+        assert predecessors_found == predecessors_true
