@@ -2,6 +2,10 @@
 
 _Kinbaku_ is the japanese art of bondage. In a graph, ropes are replaced by edges between nodes. This library allows you to manage large graphs on disk, using only one file and without having to load the whole graph in memory. The library is written in pure Python.
 
+- **Source:** https://github.com/kerighan/kinbaku
+- **Documentation:** https://kinbaku.readthedocs.io
+- **Tutorial:** https://kinbaku.readthedocs.io/en/latest/tutorial.html
+
 ## Installation
 
 It is recommended to install the cityhash package:
