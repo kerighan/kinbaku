@@ -9,4 +9,5 @@ Reference
 .. toctree::
    :maxdepth: 2
 
+   graph
    exceptions

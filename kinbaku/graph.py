@@ -143,6 +143,11 @@ class Graph:
 
     @property
     def nodes(self):
+        """Iterate over all nodes
+
+        Yields:
+            iterator: an iterator over all nodes
+        """
         position = 0
         leaf = self._get_node_at(position)
         for node in self._node_dfs(leaf):
@@ -150,6 +155,11 @@ class Graph:
 
     @property
     def edges(self):
+        """Iterate over all edges
+
+        Yields:
+            iterator: an iterator over all edges
+        """
         for edge in self._iter_edges():
             yield self._get_keys_from_edge(edge)
 
@@ -748,15 +758,31 @@ class Graph:
     # Public methods
     # =========================================================================
 
-    def neighbors(self, key):
-        leaf = self.node(key)
+    def neighbors(self, u):
+        """Iterate over all nodes v such that (u, v) is an edge
+
+        Args:
+            u (str): key of the source node
+
+        Yields:
+            iterator: iterator of node keys
+        """
+        leaf = self.node(u)
         start = self._get_edge_at(leaf.edge_start)
         for edge in self._edge_out_dfs(start):
             res = self._get_node_at(edge.target_position)
             yield res.key
 
-    def predecessors(self, key):
-        leaf = self.node(key)
+    def predecessors(self, v):
+        """Iterate over all nodes u such that (u, v) is an edge
+
+        Args:
+            v ([type]): key of the target node
+
+        Yields:
+            iterator: iterator of node keys
+        """
+        leaf = self.node(v)
         start = self._get_edge_at(leaf.edge_start)
         for edge in self._edge_in_dfs(start):
             res = self._get_node_at(edge.source_position)
@@ -777,6 +803,17 @@ class Graph:
         return count
 
     def node(self, key):
+        """Get node from key
+
+        Args:
+            key (str): unique string identifier of the node
+
+        Raises:
+            NodeNotFound: the key does not match any node in the graph
+
+        Returns:
+            node_class: node
+        """
         # if key is already a node object
         if isinstance(key, self.node_class):
             return key
@@ -807,6 +844,19 @@ class Graph:
         return leaf
 
     def edge(self, source, target, edge_type=0):
+        """Get edge from source, target and edge type
+
+        Args:
+            source (str): key of the source node
+            target (str): key of the target node
+            edge_type (int): type of edge to match
+
+        Raises:
+            EdgeNotFound: the arguments do not match any edge in the graph
+
+        Returns:
+            edge_class: edge
+        """
         # get source and target nodes
         source = self.node(source)
         target = self.node(target)
@@ -826,6 +876,16 @@ class Graph:
         raise EdgeNotFound(f"Edge {source.key} -> {target.key} not found")
 
     def has_edge(self, source, target, edge_type=0):
+        """Returns True if (source, target[, edge_type]) exists
+
+        Args:
+            source (str): key of source node
+            target (str): key of target node
+            edge_type (int, optional): edge type to match. Defaults to 0.
+
+        Returns:
+            bool: True if edge exists, False otherwise
+        """
         try:
             self.edge(source, target, edge_type)
             return True
@@ -833,6 +893,14 @@ class Graph:
             return False
 
     def has_node(self, node):
+        """Returns True if node exists
+
+        Args:
+            node (str): string key of the node
+
+        Returns:
+            bool: True if node exists, False otherwise
+        """
         try:
             self.node(node)
             return True
@@ -843,17 +911,41 @@ class Graph:
     # Overload
     # =========================================================================
 
-    def __getitem__(self, key):
-        return self.node(key)
+    def __getitem__(self, item):
+        """Get node or edge
 
-    def __contains__(self, key):
-        if isinstance(key, tuple):
-            if len(key) == 2:
-                return self.has_edge(key[0], key[1])
-            elif len(key) == 3:
-                return self.has_edge(key[0], key[1], key[2])
-        elif isinstance(key, str):
-            return self.has_node(key)
+        Args:
+            item (str or tuple): if one string is provided, returns
+                                 corresponding node.
+                                 If two strings are provided (+ an optional
+                                 edge_type), return the corresponding edge.
+
+        Returns:
+            node_class or edge_class: node or edge
+        """
+        if isinstance(item, str):
+            return self.node(item)
+        elif isinstance(item, tuple):
+            return self.edge(*item)
+
+    def __contains__(self, item):
+        """Returns True if node or edge exists
+
+        Args:
+            item (str or tuple): if item is a string, return has_node(item),
+                                 if item is a tuple, return has_edge(...)
+
+        Raises:
+            KinbakuException: query malformed
+
+        Returns:
+            bool: True if edge or node exists, False otherwise
+        """
+        if isinstance(item, tuple):
+            if 2 <= len(item) <= 3:
+                return self.has_edge(*item)
+        elif isinstance(item, str):
+            return self.has_node(item)
         raise KinbakuException("argument not understood")
 
     # =========================================================================
@@ -894,6 +986,17 @@ class Graph:
     # =========================================================================
 
     def add_node(self, key, attr=None):
+        """Add a single node to graph, with optional attributes.
+
+        Args:
+            key (str): string key uniquely identifying a node
+            attr (dict, optional): custom attributes. Must match the
+                                   additional attributes provided in the
+                                   `node_class` parameter. Defaults to None.
+
+        Returns:
+            node_class: returns node as an instance of Graph:`node_class`
+        """
         key_hash = self.hash_func(key)
 
         # new node
@@ -975,6 +1078,18 @@ class Graph:
         return node
 
     def add_edge(self, source_key, target_key, attr=None, edge_type=0):
+        """Add a single edge with custom attributes to graph
+
+        Args:
+            source_key (str): string key of the source node
+            target_key (str): string key of the target node
+            attr (dict, optional): not yet implemented. Defaults to None.
+            edge_type (int, optional): integer identifier of the edge type.
+                                       Defaults to 0.
+
+        Returns:
+            edge_class: returns edge as an instance of Graph:`edge_class`
+        """
         # get source and target
         source = self.cache_key_to_node.get(source_key)
         target = self.cache_key_to_node.get(target_key)
@@ -1029,8 +1144,16 @@ class Graph:
         self._increment_edge(recycled)
         return new_edge
 
-    def remove_edge(self, source, target, edge_type=0):
-        edge = self.edge(source, target, edge_type)
+    def remove_edge(self, source_key, target_key, edge_type=0):
+        """Remove the edge linking source to target, with the given edge_type
+
+        Args:
+            source_key (str): string key of the source node
+            target_key (str): string key of the target node
+            edge_type (int, optional): edge type of the edge to remove.
+                                       Defaults to 0.
+        """
+        edge = self.edge(source_key, target_key, edge_type)
         self._remove_edge(edge)
 
     def _remove_edge(self, edge):
@@ -1038,8 +1161,13 @@ class Graph:
         self._remove_edge_from_tree(edge, out=False)
         self._erase_edge_at(edge.position)
 
-    def remove_node(self, source_key):
-        source = self.node(source_key)
+    def remove_node(self, key):
+        """Remove node and incident edges from graph
+
+        Args:
+            key (str): string key of the node to remove
+        """
+        source = self.node(key)
         start = self._get_edge_at(source.edge_start)
 
         # for edge in edges_to_remove:

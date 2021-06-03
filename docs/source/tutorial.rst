@@ -1,7 +1,7 @@
 Tutorial
 ========
 
-This guide can help you start working with NetworkX.
+This guide can help you start working with Kinbaku.
 
 Creating a graph
 ----------------
@@ -31,14 +31,5 @@ The current version of Kinbaku only support directed graph.
 Nodes
 -----
 
-The graph ``G`` can be grown in several ways.  NetworkX includes many graph
-generator functions and facilities to read and write graphs in many formats.
 To get started though we'll look at simple manipulations.  You can add one node
 at a time.
-
-
-.. automodule:: kinbaku
-   :imported-members:
-   :members:
-   :undoc-members:
-   :show-inheritance:
