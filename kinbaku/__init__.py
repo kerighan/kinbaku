@@ -9,3 +9,5 @@ See https://kinbaku.readthedocs.io/en/latest/ for complete documentation.
 __version__ = "0.0.1"
 
 from .graph import Graph
+
+__all__ = ["Graph"]
