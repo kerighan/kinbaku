@@ -742,6 +742,10 @@ class Graph:
         v = self._get_node_at(tgt_pos).key
         return u, v
 
+    # =========================================================================
+    # Public methods
+    # =========================================================================
+
     def neighbors(self, key):
         leaf = self.node(key)
         start = self._get_edge_at(leaf.edge_start)
@@ -819,8 +823,36 @@ class Graph:
             return edge
         raise KeyError(f"Edge {source.key} -> {target.key} not found")
 
+    def has_edge(self, source, target, edge_type=0):
+        try:
+            self.edge(source, target, edge_type)
+            return True
+        except KeyError:
+            return False
+
+    def has_node(self, node):
+        try:
+            self.node(node)
+            return True
+        except KeyError:
+            return False
+
+    # =========================================================================
+    # Overload
+    # =========================================================================
+
     def __getitem__(self, key):
         return self.node(key)
+
+    def __contains__(self, key):
+        if isinstance(key, tuple):
+            if len(key) == 2:
+                return self.has_edge(key[0], key[1])
+            elif len(key) == 3:
+                return self.has_edge(key[0], key[1], key[2])
+        elif isinstance(key, str):
+            return self.has_node(key)
+        raise KeyError("argument not understood")
 
     # =========================================================================
     # Setters
