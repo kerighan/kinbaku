@@ -773,6 +773,23 @@ class Graph:
             res = self._get_node_at(edge.target_position)
             yield res.key
 
+    def neighbors_from(self, nodes, n_jobs=-1):
+        """Returns the list of neighbors for all given nodes
+
+        Args:
+            nodes (list): list of node keys
+            n_jobs (int, optional): The number of cpus to use. All available
+                                    cpus are used if n_jobs==-1.
+                                    Defaults to -1.
+        Returns:
+            dict: a dict mapping node keys to the list of their neighbors
+        """
+        if n_jobs != 1:
+            from .parallel import parallel_task
+            return parallel_task(self, nodes, "neighbors", n_jobs)
+        else:
+            return [list(self.neighbors(node)) for node in nodes]
+
     def predecessors(self, v):
         """Iterate over all nodes u such that (u, v) is an edge
 
@@ -787,6 +804,23 @@ class Graph:
         for edge in self._edge_in_dfs(start):
             res = self._get_node_at(edge.source_position)
             yield res.key
+
+    def predecessors_from(self, nodes, n_jobs=-1):
+        """Returns the list of predecessors for all given nodes
+
+        Args:
+            nodes (list): list of node keys
+            n_jobs (int, optional): The number of cpus to use. All available
+                                    cpus are used if n_jobs==-1.
+                                    Defaults to -1.
+        Returns:
+            dict: a dict mapping node keys to the list of their predecessors
+        """
+        if n_jobs != 1:
+            from .parallel import parallel_task
+            return parallel_task(self, nodes, "neighbors", n_jobs)
+        else:
+            return [list(self.neighbors(node)) for node in nodes]
 
     def out_degree(self, key):
         # returns out-degree
@@ -1180,6 +1214,15 @@ class Graph:
         self._erase_node(source)
 
     def __setitem__(self, key, attr):
+        """Create/update node with custom attributes
+
+        Args:
+            key (str): node key
+            attr (dict): attributes as provided in node_class
+
+        Returns:
+            node_class: inserted node
+        """
         return self.add_node(key, attr)
 
     # =========================================================================

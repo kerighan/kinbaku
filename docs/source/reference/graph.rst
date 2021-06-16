@@ -40,4 +40,6 @@ Accessing nodes, edges and neighbors
    Graph.has_edge
    Graph.__contains__
    Graph.neighbors
+   Graph.neighbors_from
    Graph.predecessors
+   Graph.predecessors_from
