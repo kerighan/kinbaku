@@ -32,11 +32,11 @@ class Edge:
 class Node:
     is_node: bool = True
     exists: bool = True
+    hash: int = 0
+    left: int = 0
+    right: int = 0
     index: int = 0
     position: int = 0
     parent: int = 0
-    left: int = 0
-    right: int = 0
-    hash: int = 0
     edge_start: int = 0
     key: str = ""

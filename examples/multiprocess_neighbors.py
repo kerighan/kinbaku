@@ -8,12 +8,12 @@ from tqdm import tqdm
 N = 2000  # number of nodes
 d = 1000  # average degree
 
-# G = kn.Graph("test.db", flag="n")
-# for _ in tqdm(range(N * d)):
-#     u = str(random.randint(0, N - 1))
-#     v = str(random.randint(0, N - 1))
-#     G.add_edge(u, v)
-# del G
+G = kn.Graph("test.db", flag="n")
+for _ in tqdm(range(N * d)):
+    u = str(random.randint(0, N - 1))
+    v = str(random.randint(0, N - 1))
+    G.add_edge(u, v)
+del G
 
 G = kn.Graph("test.db", flag="r")
 start_time = time.time()

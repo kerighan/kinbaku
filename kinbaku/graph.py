@@ -7,10 +7,12 @@ import mmap
 import os
 from struct import error, pack, unpack
 
+from cachetools import LRUCache
+
 from .exception import (EdgeNotFound, KinbakuError, KinbakuException,
                         NodeNotFound)
 from .structure import Edge, Header, Node
-from .utils import CacheDict, compare_edges, compare_nodes, to_string
+from .utils import compare_edges, compare_nodes, to_string
 
 
 class Graph:
@@ -24,7 +26,7 @@ class Graph:
         char_format="h",
         bool_format="?",
         hash_format="I",
-        cache_len=10000000,
+        cache_len=1000000,
         table_increment=100000,
         preload=False,
         node_class=None,
@@ -95,13 +97,11 @@ class Graph:
         # initialize cache
         self.preload = preload
         self.cache_len = cache_len
-        self.cache_id_to_key = {}  # important
-        import cachetools
+        self.cache_id_to_key = LRUCache(cache_len)
+        self.cache_key_to_pos = LRUCache(cache_len)
+        self.cache_pos_to_node = LRUCache(cache_len)
+        self.cache_pos_to_node_tree = LRUCache(cache_len)
 
-        # self.cache_key_to_node = CacheDict(cache_len=cache_len)
-        # self.cache_pos_to_node = CacheDict(cache_len=cache_len)
-        self.cache_key_to_node = cachetools.LRUCache(cache_len)
-        self.cache_pos_to_node = cachetools.LRUCache(cache_len)
         self.edge_tombstone = []
         self.node_tombstone = []
 
@@ -239,6 +239,12 @@ class Graph:
             self.NODE_PLACEHOLDER_SIZE - self.NODE_SIZE
         )
 
+        # get node_tree_info  format
+        self.NODE_TREE_FORMAT = (
+            2 * self.bool_format + self.hash_format + 2 * self.int_format)
+        self.NODE_TREE = pack(self.NODE_TREE_FORMAT, 0, 0, 0, 0, 0)
+        self.NODE_TREE_SIZE = len(self.NODE_TREE)
+
     def _init_header_size(self):
         HEADER_FORMAT = ""
         HEADER_VALUES = []
@@ -305,9 +311,8 @@ class Graph:
 
         # add increment to table_size
         self.header.table_size += self.table_increment
-        self.mm[: self.HEADER_SIZE] = pack(
-            self.HEADER_FORMAT, *self._parse_values(self.header)
-        )
+        self.mm[:self.HEADER_SIZE] = pack(
+            self.HEADER_FORMAT, *self._parse_values(self.header))
         self._map_to_memory()
 
     def _increment_node(self, recycled):
@@ -332,22 +337,35 @@ class Graph:
         self._expand()
 
     def _cache_node(self, node):
-        self.cache_key_to_node[node.key] = node
+        self.cache_key_to_pos[node.key] = node.position
         self.cache_id_to_key[node.index] = node.key
         self.cache_pos_to_node[node.position] = node
+        self.cache_pos_to_node_tree[node.position] = (
+            node.hash, node.left, node.right)
 
     def _uncache_node(self, node):
         try:
-            del self.cache_key_to_node[node.key]
+            del self.cache_key_to_pos[node.key]
+        except KeyError:
+            pass
+        try:
             del self.cache_id_to_key[node.index]
+        except KeyError:
+            pass
+        try:
             del self.cache_pos_to_node[node.position]
+        except KeyError:
+            pass
+        try:
+            del self.cache_pos_to_node_tree[node.position]
         except KeyError:
             pass
 
     def empty_cache(self):
-        self.cache_id_to_key = {}  # important
-        self.cache_key_to_node = CacheDict(cache_len=self.cache_len)
-        self.cache_pos_to_node = CacheDict(cache_len=self.cache_len)
+        self.cache_id_to_key = LRUCache(self.cache_len)
+        self.cache_key_to_pos = LRUCache(self.cache_len)
+        self.cache_pos_to_node = LRUCache(self.cache_len)
+        self.cache_pos_to_node_tree = LRUCache(self.cache_len)
         self._get_sizes()
 
     def find_tombstones(self):
@@ -390,26 +408,40 @@ class Graph:
                 yield edge
 
     def _find_node_pos(self, position, new_node):
-        current_node = self._get_node_at(position)
+        # current_node = self._get_node_at(position)
+        current_hash, current_left, current_right = (
+            self._get_node_tree_info_at(position))
+        new_node_hash = new_node.hash
+
         while True:
-            state = compare_nodes(current_node.hash,
-                                  current_node.key, new_node)
+            if new_node_hash < current_hash:
+                state = -1
+            elif new_node_hash > current_hash:
+                state = 1
+            else:
+                current_node = self._get_node_at(position)
+                state = compare_nodes(current_node.hash,
+                                      current_node.key, new_node)
+
             if state == -1:
-                if current_node.left == 0:
+                if current_left == 0:
                     break
                 else:
-                    position = current_node.left
-                    current_node = self._get_node_at(position)
+                    position = current_left
+                    current_hash, current_left, current_right = (
+                        self._get_node_tree_info_at(position))
                     continue
             elif state == 1:
-                if current_node.right == 0:
+                if current_right == 0:
                     break
                 else:
-                    position = current_node.right
-                    current_node = self._get_node_at(position)
+                    position = current_right
+                    current_hash, current_left, current_right = (
+                        self._get_node_tree_info_at(position))
                     continue
             else:  # is equal
                 break
+        current_node = self._get_node_at(position)
         return current_node, state
 
     def _find_edge_out_pos(self, position, new_edge):
@@ -716,6 +748,17 @@ class Graph:
         data = unpack(self.HEADER_FORMAT, self.mm[: self.HEADER_SIZE])
         self.header = Header(*data)
 
+    def _get_node_tree_info_at(self, position):
+        data = self.cache_pos_to_node_tree.get(position)
+        if data is not None:
+            return data
+
+        ind = position * self.EDGE_SIZE + self.HEADER_SIZE
+        _, _, hash, left, right = unpack(
+            self.NODE_TREE_FORMAT, self.mm[ind: ind + self.NODE_TREE_SIZE])
+        self.cache_pos_to_node_tree[position] = hash, left, right
+        return hash, left, right
+
     def _get_node_at(self, position):
         node = self.cache_pos_to_node.get(position)
         if node is not None:
@@ -864,29 +907,41 @@ class Graph:
             return key
 
         # if key is in cache
-        result = self.cache_key_to_node.get(key)
-        if result is not None:
-            return result
+        pos = self.cache_key_to_pos.get(key)
+        if pos is not None:
+            node = self.cache_pos_to_node.get(pos)
+            if node is not None:
+                return node
 
         key_hash = self.hash_func(key)
 
         # if root is empty, set first value
         position = 0
-        leaf = self._get_node_at(position)
-        state = compare_nodes(key_hash, key, leaf)
+        # leaf = self._get_node_at(position)
+        # state = compare_nodes(key_hash, key, leaf)
 
-        while state != 0:
-            if state == -1:
-                if leaf.left == 0:
-                    raise NodeNotFound(f"Node {key} does not exist")
-                leaf = self._get_node_at(leaf.left)
-            else:
-                if leaf.right == 0:
-                    raise NodeNotFound(f"Node {key} does not exist")
-                leaf = self._get_node_at(leaf.right)
-            state = compare_nodes(key_hash, key, leaf)
-        self._cache_node(leaf)
-        return leaf
+        node = self.node_class()
+        node.hash = key_hash
+        node.key = key
+
+        # while state != 0:
+        #     if state == -1:
+        #         if leaf.left == 0:
+        #             raise NodeNotFound(f"Node {key} does not exist")
+        #         leaf = self._get_node_at(leaf.left)
+        #     else:
+        #         if leaf.right == 0:
+        #             raise NodeNotFound(f"Node {key} does not exist")
+        #         leaf = self._get_node_at(leaf.right)
+        #     state = compare_nodes(key_hash, key, leaf)
+
+        # unroll tree
+        prev_node, state = self._find_node_pos(position, node)
+        if state == 0:
+            self._cache_node(prev_node)
+            return prev_node
+        else:
+            raise NodeNotFound
 
     def edge(self, source, target, edge_type=0):
         """Get edge from source, target and edge type
@@ -1051,12 +1106,9 @@ class Graph:
         new_node.hash = key_hash
         self._parse_attributes(new_node, attr)
 
-        # initialize position
-        if key in self.cache_key_to_node:
-            leaf = self.cache_key_to_node[key]
-            position = leaf.position
-        else:
-            leaf = self._get_node_at(0)
+        # initialize position from cache
+        position = self.cache_key_to_pos.get(key)
+        if position is None:
             position = 0
 
         # unroll tree
@@ -1108,8 +1160,17 @@ class Graph:
             edge_class: returns edge as an instance of Graph:`edge_class`
         """
         # get source and target
-        source = self.cache_key_to_node.get(source_key)
-        target = self.cache_key_to_node.get(target_key)
+        # source = self.cache_key_to_node.get(source_key)
+        # target = self.cache_key_to_node.get(target_key)
+
+        try:
+            source = self.node(source_key)
+        except NodeNotFound:
+            source = self.add_node(source_key)
+        try:
+            target = self.node(target_key)
+        except NodeNotFound:
+            target = self.add_node(target_key)
 
         # create nodes if necessary
         if source is None:

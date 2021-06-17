@@ -2,19 +2,13 @@ from collections import OrderedDict
 
 
 def compare_nodes(node_A_hash, node_A_key, node_B):
-    node_B_hash = node_B.hash
     node_B_key = node_B.key
-    if node_B_hash < node_A_hash:
+    if node_B_key < node_A_key:
         return -1
-    elif node_B_hash > node_A_hash:
+    elif node_B_key > node_A_key:
         return 1
     else:
-        if node_B_key < node_A_key:
-            return -1
-        elif node_B_key > node_A_key:
-            return 1
-        else:
-            return 0
+        return 0
 
 
 def compare_edges(edge_A, edge_B):
@@ -72,26 +66,3 @@ def compare_edges(edge_A, edge_B):
 
 def to_string(data):
     return u"".join(chr(c) for c in data if c != 0)
-
-
-class CacheDict(OrderedDict):
-    """Dict with a limited length, ejecting LRUs as needed."""
-
-    def __init__(self, *args, cache_len: int = 10, **kwargs):
-        assert cache_len > 0
-        self.cache_len = cache_len
-
-        super().__init__(*args, **kwargs)
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        super().move_to_end(key)
-
-        while len(self) > self.cache_len:
-            oldkey = next(iter(self))
-            super().__delitem__(oldkey)
-
-    def __getitem__(self, key):
-        val = super().__getitem__(key)
-        super().move_to_end(key)
-        return val

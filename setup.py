@@ -1,6 +1,5 @@
 import setuptools
 
-
 with open("README.md", "r") as f:
     long_description = f.read()
 
@@ -16,6 +15,7 @@ setuptools.setup(
     url="https://github.com/kerighan/kinbaku",
     packages=setuptools.find_packages(),
     include_package_data=True,
+    install_requires=["cachetools"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.7",
