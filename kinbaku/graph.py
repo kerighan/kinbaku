@@ -10,7 +10,7 @@ from struct import error, pack, unpack
 from .exception import (EdgeNotFound, KinbakuError, KinbakuException,
                         NodeNotFound)
 from .structure import Edge, Header, Node
-from .utils import CacheDict, compare_edge, compare_nodes, to_string
+from .utils import CacheDict, compare_edges, compare_nodes, to_string
 
 
 class Graph:
@@ -96,8 +96,12 @@ class Graph:
         self.preload = preload
         self.cache_len = cache_len
         self.cache_id_to_key = {}  # important
-        self.cache_key_to_node = CacheDict(cache_len=cache_len)
-        self.cache_pos_to_node = CacheDict(cache_len=cache_len)
+        import cachetools
+
+        # self.cache_key_to_node = CacheDict(cache_len=cache_len)
+        # self.cache_pos_to_node = CacheDict(cache_len=cache_len)
+        self.cache_key_to_node = cachetools.LRUCache(cache_len)
+        self.cache_pos_to_node = cachetools.LRUCache(cache_len)
         self.edge_tombstone = []
         self.node_tombstone = []
 
@@ -385,10 +389,33 @@ class Graph:
                     continue
                 yield edge
 
+    def _find_node_pos(self, position, new_node):
+        current_node = self._get_node_at(position)
+        while True:
+            state = compare_nodes(current_node.hash,
+                                  current_node.key, new_node)
+            if state == -1:
+                if current_node.left == 0:
+                    break
+                else:
+                    position = current_node.left
+                    current_node = self._get_node_at(position)
+                    continue
+            elif state == 1:
+                if current_node.right == 0:
+                    break
+                else:
+                    position = current_node.right
+                    current_node = self._get_node_at(position)
+                    continue
+            else:  # is equal
+                break
+        return current_node, state
+
     def _find_edge_out_pos(self, position, new_edge):
         current_edge = self._get_edge_at(position)
         while True:
-            state = compare_edge(current_edge, new_edge)
+            state = compare_edges(current_edge, new_edge)
             if state == -1:  # go left
                 if current_edge.out_edge_left == 0:
                     break
@@ -410,7 +437,7 @@ class Graph:
     def _find_edge_in_pos(self, position, new_edge):
         current_edge = self._get_edge_at(position)
         while True:
-            state = compare_edge(current_edge, new_edge)
+            state = compare_edges(current_edge, new_edge)
             if state == -1:  # go left
                 if current_edge.in_edge_left == 0:
                     break
@@ -477,7 +504,7 @@ class Graph:
         if not edge.is_edge_start:
             yield edge
 
-    def _unplug(self, parent, state, out=True):
+    def _unplug_edge(self, parent, state, out=True):
         if state == -1:  # edge came from left
             if out:
                 parent.out_edge_left = 0
@@ -490,7 +517,14 @@ class Graph:
                 parent.in_edge_right = 0
         self._set_edge_at(parent, parent.position)
 
-    def _rewire(self, parent, child, state, out=True):
+    def _unplug_node(self, parent, state):
+        if state == -1:
+            parent.left = 0
+        else:
+            parent.right = 0
+        self._set_node_at(parent, parent.position)
+
+    def _rewire_edge(self, parent, child, state, out=True):
         if state == -1:
             if out:
                 parent.out_edge_left = child.position
@@ -508,59 +542,37 @@ class Graph:
         self._set_edge_at(parent, parent.position)
         self._set_edge_at(child, child.position)
 
+    def _rewire_node(self, parent, child, state):
+        if state == -1:
+            parent.left = child.position
+        else:
+            parent.right = child.position
+        child.parent = parent.position
+        self._set_node_at(parent, parent.position)
+        self._set_node_at(child, child.position)
+
     def _remove_node_from_tree(self, node):
         # case 1: node to remove has no child
         parent = self._get_node_at(node.parent)
-        if not parent.exists:
-            print(parent)
-        if not node.exists:
-            print(node)
-            raise ValueError
+        state = compare_nodes(parent.hash, parent.key, node)
+        assert state != 0
 
-        try:
-            node_pos = node.position
-            assert parent.left == node_pos or parent.right == node_pos
-        except AssertionError:
-            print()
-            print(parent)
-            print(node)
-            print(self._get_node_at(node.parent))
-            raise AssertionError
+        node_left = node.left
+        node_right = node.right
 
-        state = -1 if parent.left == node.position else 1
-        if node.left == 0 and node.right == 0:
-            if state == -1:
-                parent.left = 0
-            else:
-                parent.right = 0
-            self._set_node_at(parent, parent.position)
-        elif node.left == 0:
-            child = self._get_node_at(node.right)
-            child.parent = parent.position
-            if state == -1:
-                parent.left = child.position
-            else:
-                parent.right = child.position
-            self._set_node_at(child, child.position)
-            self._set_node_at(parent, parent.position)
-        elif node.right == 0:
-            child = self._get_node_at(node.left)
-            child.parent = parent.position
-            if state == -1:
-                parent.left = child.position
-            else:
-                parent.right = child.position
-            self._set_node_at(child, child.position)
-            self._set_node_at(parent, parent.position)
+        # case 1: node to remove has no child
+        if node_left == 0 and node_right == 0:
+            self._unplug_node(parent, state)
+        # case 2: node to remove has only one child
+        elif node_left == 0:
+            child = self._get_node_at(node_right)
+            self._rewire_node(parent, child, state)
+        elif node_right == 0:
+            child = self._get_node_at(node_left)
+            self._rewire_node(parent, child, state)
+        # case 3: node to remove has two children
         else:
             successor, antecedent = self._find_inorder_successor_node(node)
-            if not antecedent.exists:
-                print("antecedent")
-                raise ValueError
-            if not successor.exists:
-                print("successor")
-                raise ValueError
-
             # remove antecedent link to successor
             antecedent.left = 0
             # set successor's parent to parent
@@ -572,27 +584,27 @@ class Graph:
 
             # case a: antecedent happens to be the node to remove
             if antecedent.position == node.position:
-                successor.left = node.left
-                node_left_item = self._get_node_at(node.left)
+                successor.left = node_left
+                node_left_item = self._get_node_at(node_left)
                 node_left_item.parent = successor.position
 
-                self._set_node_at(node_left_item, node.left)
+                self._set_node_at(node_left_item, node_left)
                 self._set_node_at(successor, successor.position)
                 self._set_node_at(parent, parent.position)
             # case b: antecedent is further down
             else:
                 # put left tree in left child of successor
-                successor.left = node.left
-                node_left_item = self._get_node_at(node.left)
+                successor.left = node_left
+                node_left_item = self._get_node_at(node_left)
                 node_left_item.parent = successor.position
-                self._set_node_at(node_left_item, node.left)
+                self._set_node_at(node_left_item, node_left)
 
-                if node.right == antecedent.position:
+                if node_right == antecedent.position:
                     antecedent.parent = successor.position
                 else:
-                    node_right_item = self._get_node_at(node.right)
-                    node_right_item.position = successor.position
-                    self._set_node_at(node_right_item, node.right)
+                    node_right_item = self._get_node_at(node_right)
+                    node_right_item.parent = successor.position
+                    self._set_node_at(node_right_item, node_right)
 
                 # put right tree of successor to antecdent left tree
                 successor_right_pos = successor.right
@@ -603,7 +615,7 @@ class Graph:
                     successor_right.parent = antecedent.position
                     self._set_node_at(successor_right, successor_right_pos)
 
-                successor.right = node.right
+                successor.right = node_right
                 self._set_node_at(successor, successor.position)
                 self._set_node_at(parent, parent.position)
 
@@ -617,23 +629,22 @@ class Graph:
             edge_left = edge.in_edge_left
             edge_right = edge.in_edge_right
             parent = self._get_edge_at(edge.in_edge_parent)
-        state = compare_edge(parent, edge)
+        state = compare_edges(parent, edge)
 
         # case 1: edge to remove has no child
         if edge_left == 0 and edge_right == 0:
-            self._unplug(parent, state, out)
+            self._unplug_edge(parent, state, out)
         # case 2: edge to remove has only one child
         elif edge_left == 0:
             child = self._get_edge_at(edge_right)
-            self._rewire(parent, child, state, out)
+            self._rewire_edge(parent, child, state, out)
         elif edge_right == 0:
             child = self._get_edge_at(edge_left)
-            self._rewire(parent, child, state, out)
+            self._rewire_edge(parent, child, state, out)
         # case 3: edge to remove has two children
         else:
             successor, antecedent = self._find_inorder_successor_edge(
-                edge, out=out
-            )
+                edge, out=out)
             right = "out_edge_right" if out else "in_edge_right"
             left = "out_edge_left" if out else "in_edge_left"
             up = "out_edge_parent" if out else "in_edge_parent"
@@ -653,8 +664,8 @@ class Graph:
                 setattr(successor, left, edge_left)
                 edge_left_item = self._get_edge_at(edge_left)
                 setattr(edge_left_item, up, successor.position)
-                self._set_edge_at(edge_left_item, edge_left)
 
+                self._set_edge_at(edge_left_item, edge_left)
                 self._set_edge_at(successor, successor.position)
                 self._set_edge_at(parent, parent.position)
             # case b: antecedent is further down
@@ -1034,11 +1045,11 @@ class Graph:
         key_hash = self.hash_func(key)
 
         # new node
-        node = self.node_class()
-        node.index = self.header.node_id
-        node.key = key
-        node.hash = key_hash
-        self._parse_attributes(node, attr)
+        new_node = self.node_class()
+        new_node.index = self.header.node_id
+        new_node.key = key
+        new_node.hash = key_hash
+        self._parse_attributes(new_node, attr)
 
         # initialize position
         if key in self.cache_key_to_node:
@@ -1049,67 +1060,39 @@ class Graph:
             position = 0
 
         # unroll tree
-        while True:
-            state = compare_nodes(key_hash, key, leaf)
-            if state == -1:  # go left
-                if leaf.left == 0:  # and leaf is empty
-                    left = True
-                    break
-                else:
-                    position = leaf.left
-                    leaf = self._get_node_at(position)
-                    continue
-            elif state == 1:  # go right
-                if leaf.right == 0:  # and leaf is empty
-                    left = False
-                    break
-                else:
-                    position = leaf.right
-                    leaf = self._get_node_at(position)
-                    continue
-            else:  # is equal
-                # check equality on a few criteria
-                node.index = leaf.index
-                node.left = leaf.left
-                node.right = leaf.right
-                node.edge_start = leaf.edge_start
-                node.position = leaf.position
-                node.parent = leaf.parent
-                if node == leaf:
-                    return leaf
-                self._set_node_at(node, position)
-                return node
+        prev_node, state = self._find_node_pos(position, new_node)
 
-        # get new position
-        new_position, node_recycled = self._get_next_node_position()
-        node.position = new_position
+        # node already exists
+        if state == 0:
+            return prev_node
 
-        # new dummy edge
-        edge = self.edge_class()
-        edge.source_position = new_position
-        edge.hash = node.hash
-        edge.is_edge_start = True
-
-        # update sizes
+        # new node and edge positions
+        new_node_position, node_recycled = self._get_next_node_position()
         self._increment_node(node_recycled)
+        new_edge_position, edge_recycled = self._get_next_edge_position()
+        self._increment_edge(edge_recycled)
 
-        # add new node
-        node.edge_start, recycled = self._get_next_edge_position()
-        node.parent = leaf.position
-        self._set_node_at(node, new_position)
+        # new node
+        new_node.position = new_node_position
+        new_node.edge_start = new_edge_position
+        new_node.parent = prev_node.position
+        self._set_node_at(new_node, new_node_position)
 
-        # add new edge for the node
-        edge.position = node.edge_start
-        self._set_edge_at(edge, node.edge_start)
-        self._increment_edge(recycled)
+        # new 'dummy' edge
+        edge = self.edge_class()
+        edge.source_position = new_node_position
+        edge.hash = new_node.hash
+        edge.is_edge_start = True
+        edge.position = new_node.edge_start
+        self._set_edge_at(edge, new_node.edge_start)
 
-        # update the node before: link to left or right tree
-        if left:
-            leaf.left = new_position
+        # update parent node
+        if state == -1:
+            prev_node.left = new_node_position
         else:
-            leaf.right = new_position
-        self._set_node_at(leaf, position)
-        return node
+            prev_node.right = new_node_position
+        self._set_node_at(prev_node, prev_node.position)
+        return new_node
 
     def add_edge(self, source_key, target_key, attr=None, edge_type=0):
         """Add a single edge with custom attributes to graph
@@ -1202,10 +1185,9 @@ class Graph:
             key (str): string key of the node to remove
         """
         source = self.node(key)
-        start = self._get_edge_at(source.edge_start)
-
-        # for edge in edges_to_remove:
-        for edge in self._edge_out_dfs(start):
+        edge_start = self._get_edge_at(source.edge_start)
+        edges = list(self._edge_out_dfs(edge_start))
+        for edge in edges:
             edge = self._get_edge_at(edge.position)
             self._remove_edge(edge)
 

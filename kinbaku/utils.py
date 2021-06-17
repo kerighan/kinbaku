@@ -1,19 +1,23 @@
 from collections import OrderedDict
 
 
-def compare_nodes(key_hash, key_tuple, leaf):
-    if key_hash < leaf.hash:
+def compare_nodes(node_A_hash, node_A_key, node_B):
+    node_B_hash = node_B.hash
+    node_B_key = node_B.key
+    if node_B_hash < node_A_hash:
         return -1
-    elif key_hash == leaf.hash:
-        if key_tuple < leaf.key:
-            return -1
-        elif key_tuple == leaf.key:
-            return 0
+    elif node_B_hash > node_A_hash:
         return 1
-    return 1
+    else:
+        if node_B_key < node_A_key:
+            return -1
+        elif node_B_key > node_A_key:
+            return 1
+        else:
+            return 0
 
 
-def compare_edge(edge_A, edge_B):
+def compare_edges(edge_A, edge_B):
     edge_A_hash = edge_A.hash
     edge_A_source = edge_A.source_position
     edge_A_target = edge_A.target_position
