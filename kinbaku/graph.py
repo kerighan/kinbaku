@@ -80,9 +80,12 @@ class Graph:
         self.flag = flag
 
         if hash_func is None:
-            from cityhash import CityHash32
-
-            self.hash_func = CityHash32
+            try:
+                from cityhash import CityHash32
+                self.hash_func = CityHash32
+            except ImportError:
+                import mmh3
+                self.hash_func = lambda x: mmh3.hash(x, signed=False) 
         else:
             self.hash_func = hash_func
 
@@ -584,10 +587,14 @@ class Graph:
         self._set_node_at(child, child.position)
 
     def _remove_node_from_tree(self, node):
-        # case 1: node to remove has no child
         parent = self._get_node_at(node.parent)
-        state = compare_nodes(parent.hash, parent.key, node)
-        assert state != 0
+        # find state
+        if parent.left == node.position:
+            state = -1
+        elif parent.right == node.position:
+            state = 1
+        else:
+            raise KinbakuError("state == 0")
 
         node_left = node.left
         node_right = node.right
@@ -665,6 +672,10 @@ class Graph:
 
         # case 1: edge to remove has no child
         if edge_left == 0 and edge_right == 0:
+            if parent.position < 0:
+                print(edge)
+                print(parent)
+                raise ValueError
             self._unplug_edge(parent, state, out)
         # case 2: edge to remove has only one child
         elif edge_left == 0:
@@ -812,6 +823,10 @@ class Graph:
     # Public methods
     # =========================================================================
 
+    def close(self):
+        """Closes database file."""
+        self.mm.close()
+
     def neighbors(self, u):
         """Iterate over all nodes v such that (u, v) is an edge
 
@@ -915,27 +930,12 @@ class Graph:
 
         key_hash = self.hash_func(key)
 
-        # if root is empty, set first value
-        position = 0
-        # leaf = self._get_node_at(position)
-        # state = compare_nodes(key_hash, key, leaf)
-
         node = self.node_class()
         node.hash = key_hash
         node.key = key
 
-        # while state != 0:
-        #     if state == -1:
-        #         if leaf.left == 0:
-        #             raise NodeNotFound(f"Node {key} does not exist")
-        #         leaf = self._get_node_at(leaf.left)
-        #     else:
-        #         if leaf.right == 0:
-        #             raise NodeNotFound(f"Node {key} does not exist")
-        #         leaf = self._get_node_at(leaf.right)
-        #     state = compare_nodes(key_hash, key, leaf)
-
         # unroll tree
+        position = 0
         prev_node, state = self._find_node_pos(position, node)
         if state == 0:
             self._cache_node(prev_node)
@@ -1048,6 +1048,9 @@ class Graph:
             return self.has_node(item)
         raise KinbakuException("argument not understood")
 
+    def __del__(self):
+        self.close()
+
     # =========================================================================
     # Setters
     # =========================================================================
@@ -1061,7 +1064,11 @@ class Graph:
     def _set_edge_at(self, edge, position):
         values = self._parse_values(edge)
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
-        self.mm[ind: ind + self.EDGE_SIZE] = pack(self.EDGE_FORMAT, *values)
+        try:
+            self.mm[ind: ind + self.EDGE_SIZE] = pack(self.EDGE_FORMAT, *values)
+        except IndexError:
+            print(self.header.table_size, ind + self.EDGE_SIZE, ind)
+            raise IndexError
 
     def _erase_edge_at(self, position):
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
@@ -1247,9 +1254,14 @@ class Graph:
         """
         source = self.node(key)
         edge_start = self._get_edge_at(source.edge_start)
-        edges = list(self._edge_out_dfs(edge_start))
-        for edge in edges:
+
+        existing_edges = (
+            list(self._edge_out_dfs(edge_start)) +
+            list(self._edge_in_dfs(edge_start)))
+        for edge in existing_edges:
             edge = self._get_edge_at(edge.position)
+            if not edge.exists:
+                continue
             self._remove_edge(edge)
 
         # erase node from file

@@ -8,6 +8,7 @@ class Header:
     node_id: int
     next_table_position: int
     table_size: int
+    class_length: int
 
 
 @dataclass
