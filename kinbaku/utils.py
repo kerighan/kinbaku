@@ -1,6 +1,3 @@
-from collections import OrderedDict
-
-
 def compare_nodes(node_A_hash, node_A_key, node_B):
     node_B_key = node_B.key
     if node_B_key < node_A_key:
