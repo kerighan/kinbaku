@@ -20,8 +20,8 @@ Adding and removing nodes and edges
 
    Graph.__init__
    Graph.add_node
-   Graph.remove_node
    Graph.add_edge
+   Graph.remove_node
    Graph.remove_edge
 
 Accessing nodes, edges and neighbors
@@ -43,3 +43,4 @@ Accessing nodes, edges and neighbors
    Graph.predecessors
    Graph.neighbors_from
    Graph.predecessors_from
+   Graph.close

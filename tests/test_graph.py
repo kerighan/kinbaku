@@ -11,6 +11,7 @@ def G():
     graph = kn.Graph("test.db", flag="n")
     yield graph
 
+    graph.close()
     del graph
     os.remove("test.db")
 
