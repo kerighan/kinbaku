@@ -1,4 +1,3 @@
-import queue
 import threading
 from dataclasses import asdict
 from queue import Queue
@@ -23,7 +22,7 @@ def write_job(G, q):
 G = kn.Graph(DB_FILENAME)
 
 # create writer thread
-write_queue = queue.Queue()
+write_queue = Queue()
 thread = threading.Thread(target=write_job, args=(G, write_queue))
 thread.start()
 
