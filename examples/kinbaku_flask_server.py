@@ -15,6 +15,10 @@ def write_job(G, q):
             G.add_node(data)
         elif instruction == "edge":
             G.add_edge(*data)
+        elif instruction == "remove_node":
+            G.remove_node(data)
+        elif instruction == "remove_edge":
+            G.removed_edge(*data)
         q.task_done()
 
 
@@ -40,9 +44,11 @@ def node(u):
             return f"node {u} not found", 404
     # create node
     elif request.method == "POST":
-        # G.add_node(u)
         write_queue.put(("node", u))
         return f"node {u} created", 200
+    elif request.method == "DELETE":
+        write_queue.put(("remove_node", u))
+        return f"node {u} removed", 200
 
 
 @app.route("/edge/<u>/<v>", methods=["GET", "POST", "PUT", "DELETE"])
@@ -59,7 +65,7 @@ def edge(u, v):
         return f"edge {u}->{v} created", 200
     # delete edge
     elif request.method == "DELETE":
-        G.remove_edge(u, v)
+        write_queue.put(("remove_edge", (u, v)))
         return f"edge {u}->{v} removed", 200
 
 
