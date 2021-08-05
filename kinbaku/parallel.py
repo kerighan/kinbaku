@@ -1,4 +1,5 @@
-import threading, queue
+import queue
+import threading
 
 
 def parallel_task(G, nodes, task, n_jobs=-1):
@@ -18,7 +19,7 @@ def parallel_task(G, nodes, task, n_jobs=-1):
                 target=target_predecessors, args=(q, d, G))
         thread.daemon = True
         thread.start()
-    
+
     for node in nodes:
         q.put_nowait(node)
     q.join()

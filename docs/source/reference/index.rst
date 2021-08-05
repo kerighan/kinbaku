@@ -1,5 +1,3 @@
-.. _reference:
-
 Reference
 *********
 
@@ -11,3 +9,6 @@ Reference
 
    graph
    exceptions
+   license
+   citing
+   credits

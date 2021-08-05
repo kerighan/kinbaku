@@ -1,6 +1,5 @@
-**********
 Exceptions
-**********
+==========
 
 .. automodule:: kinbaku.exception
 .. currentmodule:: kinbaku

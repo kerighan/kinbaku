@@ -1,8 +1,8 @@
+import random
+
 import kinbaku as kn
 import networkx as nx
 from tqdm import tqdm
-import random
-
 
 # create graphs
 G_kn = kn.Graph("test.db", flag="n")

@@ -4,7 +4,7 @@ from tqdm import tqdm
 G = kn.Graph("test.db", flag="n", cache_len=100000)
 
 # create random edges
-N = 20000000  # number of nodes
+N = 200000  # number of nodes
 for i in tqdm(range(N)):
     G.add_node(str(i))
 

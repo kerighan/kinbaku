@@ -1,7 +1,7 @@
-import kinbaku as kn
-from tqdm import tqdm
 import random
 
+import kinbaku as kn
+from tqdm import tqdm
 
 # create graph
 G = kn.Graph("test.db", flag="n")

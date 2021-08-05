@@ -12,16 +12,19 @@ Kinbaku documentation
    :hidden:
    :maxdepth: 1
 
+   overview
+   installing
    tutorial
    reference/index
+   examples/index
 
-Kinbaku is a graph database written in pure Python, made for storing, updating and accessing large graphs directly on disk.
+Kinbaku is a blazing fast graph database written in pure Python, made for storing, updating and accessing huge graphs directly on disk.
 It has many useful features such as:
 
 -  storage of directed graphs with custom node or edge attributes
 -  painless navigation in graphs using powerful yet simple queries
 -  RAM-friendly algorithms and tools
--  multiprocessing support
+-  fastest insertion and access on the market
 
 Kinbaku deliberately follows NetworkX syntax as close as possible, making it both simple and familiar to use.
 

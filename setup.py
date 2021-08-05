@@ -18,8 +18,7 @@ setuptools.setup(
     install_requires=["cachetools"],
     classifiers=[
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
-        "License :: OSI Approved :: MIT License",
+        "License :: MIT License",
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.7"

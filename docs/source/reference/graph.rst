@@ -1,5 +1,3 @@
-.. _graph:
-
 =========================================
 Graph
 =========================================
@@ -44,3 +42,9 @@ Accessing nodes, edges and neighbors
    Graph.neighbors_from
    Graph.predecessors_from
    Graph.close
+
+
+Linear Algebra
+--------------
+
+coming soon

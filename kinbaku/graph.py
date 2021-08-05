@@ -11,7 +11,7 @@ from cachetools import LRUCache
 
 from .exception import (EdgeNotFound, KinbakuError, KinbakuException,
                         NodeNotFound)
-from .structure import Edge, Header, Node
+from .structure import Edge, Header, Node, text
 from .utils import compare_edges, compare_nodes, to_string
 
 
@@ -85,7 +85,7 @@ class Graph:
                 self.hash_func = CityHash32
             except ImportError:
                 import mmh3
-                self.hash_func = lambda x: mmh3.hash(x, signed=False) 
+                self.hash_func = lambda x: mmh3.hash(x, signed=False)
         else:
             self.hash_func = hash_func
 
@@ -181,6 +181,9 @@ class Graph:
             if field.name == "hash":
                 DATA_FORMAT += self.hash_format
                 DATA_VALUES.append(0)
+            elif field.type == text:
+                DATA_FORMAT += field.default.length * self.char_format
+                DATA_VALUES += (0,) * field.default.length
             elif field.type == int:
                 DATA_FORMAT += self.int_format
                 DATA_VALUES.append(0)
@@ -204,6 +207,9 @@ class Graph:
             value = getattr(data, field)
             if field == "key":
                 values += self._key_to_tuple(value)
+            # [TODO] to be implented!
+            # elif isinstance(value, text):
+            #     values +=
             elif isinstance(value, str):
                 values += self._str_to_tuple(value)
             elif isinstance(value, tuple):
@@ -1004,7 +1010,7 @@ class Graph:
         try:
             self.node(node)
             return True
-        except KeyError:
+        except NodeNotFound:
             return False
 
     # =========================================================================
@@ -1065,7 +1071,8 @@ class Graph:
         values = self._parse_values(edge)
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         try:
-            self.mm[ind: ind + self.EDGE_SIZE] = pack(self.EDGE_FORMAT, *values)
+            self.mm[ind: ind + self.EDGE_SIZE] = pack(
+                self.EDGE_FORMAT, *values)
         except IndexError:
             print(self.header.table_size, ind + self.EDGE_SIZE, ind)
             raise IndexError
@@ -1123,7 +1130,17 @@ class Graph:
 
         # node already exists
         if state == 0:
-            return prev_node
+            if new_node == prev_node:
+                return prev_node
+
+            new_node.left = prev_node.left
+            new_node.right = prev_node.right
+            new_node.index = prev_node.index
+            new_node.position = prev_node.position
+            new_node.parent = prev_node.parent
+            new_node.edge_start = prev_node.edge_start
+            self._set_node_at(new_node, new_node.position)
+            return new_node
 
         # new node and edge positions
         new_node_position, node_recycled = self._get_next_node_position()
@@ -1166,10 +1183,6 @@ class Graph:
         Returns:
             edge_class: returns edge as an instance of Graph:`edge_class`
         """
-        # get source and target
-        # source = self.cache_key_to_node.get(source_key)
-        # target = self.cache_key_to_node.get(target_key)
-
         try:
             source = self.node(source_key)
         except NodeNotFound:
@@ -1191,12 +1204,26 @@ class Graph:
         new_edge.target_position = target.position
         new_edge.hash = self._get_edge_hash(source, target, edge_type)
         new_edge.type = edge_type
+        self._parse_attributes(new_edge, attr)
 
         # =====================================================================
         # OUT direction
         prev_out, state = self._find_edge_out_pos(source.edge_start, new_edge)
         if state == 0:  # edge already exists
-            return prev_out
+            if prev_out == new_edge:
+                return prev_out
+
+            new_edge.position = prev_out.position
+            new_edge.source_position = prev_out.source_position
+            new_edge.target_position = prev_out.target_position
+            new_edge.out_edge_left = prev_out.out_edge_left
+            new_edge.out_edge_right = prev_out.out_edge_right
+            new_edge.out_edge_parent = prev_out.out_edge_parent
+            new_edge.in_edge_left = prev_out.in_edge_left
+            new_edge.in_edge_right = prev_out.in_edge_right
+            new_edge.in_edge_parent = prev_out.in_edge_parent
+            self._set_edge_at(new_edge, new_edge.position)
+            return new_edge
         else:
             self._parse_attributes(new_edge, attr)
             new_edge_position, recycled = self._get_next_edge_position()
@@ -1278,7 +1305,9 @@ class Graph:
         Returns:
             node_class: inserted node
         """
-        return self.add_node(key, attr)
+        if isinstance(key, tuple):
+            return self.add_edge(key[0], key[1], attr=attr)
+        return self.add_node(key, attr=attr)
 
     # =========================================================================
     # Utils

@@ -4,7 +4,6 @@ import time
 import kinbaku as kn
 from tqdm import tqdm
 
-
 # create random edges
 N = 2000  # number of nodes
 d = 1000  # average degree
