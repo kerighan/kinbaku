@@ -16,12 +16,9 @@ d = 1000  # average degree
 # del G
 
 G = kn.Graph("test.db", flag="r")
-start_time = time.time()
 # get neighbors sequentially
-for node in range(N):
-    list(G.neighbors(str(node)))
-elapsed = time.time() - start_time
-print(f"{elapsed:.2f}s", "liste")
+for node in tqdm(range(N)):
+    print(len(list(G.neighbors(str(node)))))
 del G
 
 G = kn.Graph("test.db", flag="r")

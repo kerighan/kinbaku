@@ -8,13 +8,5 @@ N = 200000  # number of nodes
 for i in tqdm(range(N)):
     G.add_node(str(i))
 
-
-# i = 0
-# for node in tqdm(G.nodes, total=G.n_nodes):
-#     # print(node)
-#     i += 1
-#     # if i > 100:
-#     #     break
-# print(i)
-
-# print(G.node("1501540"))
+for i in tqdm(range(N)):
+    G.add_edge("0", str(i))

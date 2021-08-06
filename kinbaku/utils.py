@@ -63,3 +63,10 @@ def compare_edges(edge_A, edge_B):
 
 def to_string(data):
     return u"".join(chr(c) for c in data if c != 0)
+
+
+def lock(func):
+    def wrapper(*args, **kwargs):
+        with args[0].lock:
+            return func(*args, **kwargs)
+    return wrapper

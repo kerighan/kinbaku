@@ -6,13 +6,14 @@ import math
 import mmap
 import os
 from struct import error, pack, unpack
+import threading
 
 from cachetools import LRUCache
 
 from .exception import (EdgeNotFound, KinbakuError, KinbakuException,
                         NodeNotFound)
 from .structure import Edge, Header, Node, text
-from .utils import compare_edges, compare_nodes, to_string
+from .utils import compare_edges, compare_nodes, to_string, lock
 
 
 class Graph:
@@ -75,6 +76,7 @@ class Graph:
         >>> G = kn.Graph("test.db", flag="r")
         >>> G = kn.Graph("test.db", hash_func=lambda x: math.abs(hash(x)))
         """
+        self.lock = threading.RLock()
         self.filename = filename
         self.table_increment = table_increment
         self.flag = flag
@@ -278,6 +280,7 @@ class Graph:
     # File & memory management
     # =========================================================================
 
+    @lock
     def _load_file(self):
         if not os.path.exists(self.filename) or self.flag == "n":
             with open(self.filename, "wb") as f:
@@ -829,10 +832,12 @@ class Graph:
     # Public methods
     # =========================================================================
 
+    @lock
     def close(self):
         """Closes database file."""
         self.mm.close()
 
+    @lock
     def neighbors(self, u):
         """Iterate over all nodes v such that (u, v) is an edge
 
@@ -856,15 +861,30 @@ class Graph:
             n_jobs (int, optional): The number of cpus to use. All available
                                     cpus are used if n_jobs==-1.
                                     Defaults to -1.
+                                    NOT IMPLEMENTED YET
         Returns:
             dict: a dict mapping node keys to the list of their neighbors
         """
-        if n_jobs != 1:
-            from .parallel import parallel_task
-            return parallel_task(self, nodes, "neighbors", n_jobs)
-        else:
-            return [list(self.neighbors(node)) for node in nodes]
+        nbs = []
+        # NOTE: not a oneliner as it would block multithreading
+        for node in nodes:
+            nbs.append(list(self.neighbors(node)))
+        return nbs
+    
+    def common_neighbors(self, u, v):
+        """Returns the set of common neighbors between two nodes
 
+        Args:
+            u (str): key of the first node
+            v (str): key of the second node
+        Returns:
+            set: the set of all common neighbors
+        """
+        u_nbs = set(self.neighbors(u))
+        v_nbs = set(self.neighbors(v))
+        return u_nbs.intersection(v_nbs)
+
+    @lock
     def predecessors(self, v):
         """Iterate over all nodes u such that (u, v) is an edge
 
@@ -891,12 +911,27 @@ class Graph:
         Returns:
             dict: a dict mapping node keys to the list of their predecessors
         """
-        if n_jobs != 1:
-            from .parallel import parallel_task
-            return parallel_task(self, nodes, "neighbors", n_jobs)
-        else:
-            return [list(self.neighbors(node)) for node in nodes]
+        nbs = []
+        # NOTE: not a oneliner as it would block multithreading
+        for node in nodes:
+            nbs.append(list(self.predecessors(node)))
+        return nbs
 
+    def common_predecessors(self, u, v):
+        """Returns the set of common predecessors between two nodes
+
+        Args:
+            u (str): key of the first node
+            v (str): key of the second node
+        Returns:
+            set: the set of all common predecessors
+        """
+        u_nbs = set(self.predecessors(u))
+        v_nbs = set(self.predecessors(v))
+        return u_nbs.intersection(v_nbs)
+
+
+    @lock
     def out_degree(self, key):
         # returns out-degree
         count = 0
@@ -904,6 +939,7 @@ class Graph:
             count += 1
         return count
 
+    @lock
     def in_degree(self, key):
         # returns in-degree
         count = 0
@@ -911,6 +947,7 @@ class Graph:
             count += 1
         return count
 
+    @lock
     def node(self, key):
         """Get node from key
 
@@ -949,6 +986,7 @@ class Graph:
         else:
             raise NodeNotFound
 
+    @lock
     def edge(self, source, target, edge_type=0):
         """Get edge from source, target and edge type
 
@@ -981,6 +1019,7 @@ class Graph:
             return edge
         raise EdgeNotFound(f"Edge {source.key} -> {target.key} not found")
 
+    @lock
     def has_edge(self, source, target, edge_type=0):
         """Returns True if (source, target[, edge_type]) exists
 
@@ -995,9 +1034,10 @@ class Graph:
         try:
             self.edge(source, target, edge_type)
             return True
-        except KeyError:
+        except EdgeNotFound:
             return False
 
+    @lock
     def has_node(self, node):
         """Returns True if node exists
 
@@ -1012,6 +1052,42 @@ class Graph:
             return True
         except NodeNotFound:
             return False
+    
+    @lock
+    def adjacency_matrix(self, weight=None):
+        from scipy.sparse import csr_matrix
+        import numpy as np
+
+        node_to_index = {}
+        index_to_node = {}
+        index = 0
+        xs = []
+        ys = []
+        data = []
+        for source, target in self.edges:
+            source_id = node_to_index.get(source)
+            if source_id is None:
+                node_to_index[source] = index
+                index_to_node[index] = source
+                source_id = index
+                index += 1
+            
+            target_id = node_to_index.get(target)
+            if target_id is None:
+                node_to_index[target] = index
+                index_to_node[index] = target
+                target_id = index
+                index += 1
+
+            xs.append(source_id)
+            ys.append(target_id)
+            if weight is None:
+                data.append(1)
+
+        if weight is None:
+            dtype = np.bool_
+        A = csr_matrix((data, (xs, ys)), shape=(index, index), dtype=dtype)
+        return A, index_to_node
 
     # =========================================================================
     # Overload
@@ -1099,6 +1175,7 @@ class Graph:
     # Create & delete Nodes & Edges
     # =========================================================================
 
+    @lock
     def add_node(self, key, attr=None):
         """Add a single node to graph, with optional attributes.
 
@@ -1170,6 +1247,7 @@ class Graph:
         self._set_node_at(prev_node, prev_node.position)
         return new_node
 
+    @lock
     def add_edge(self, source_key, target_key, attr=None, edge_type=0):
         """Add a single edge with custom attributes to graph
 
@@ -1256,6 +1334,7 @@ class Graph:
         self._increment_edge(recycled)
         return new_edge
 
+    @lock
     def remove_edge(self, source_key, target_key, edge_type=0):
         """Remove the edge linking source to target, with the given edge_type
 
@@ -1273,6 +1352,7 @@ class Graph:
         self._remove_edge_from_tree(edge, out=False)
         self._erase_edge_at(edge.position)
 
+    @lock
     def remove_node(self, key):
         """Remove node and incident edges from graph
 

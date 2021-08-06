@@ -16,7 +16,7 @@ Despite the fact that loading a huge graph into RAM is impossible for most moder
 Free software
 -------------
 
-Kinbaky is a free software; you can redistribute it and/or modify it under the terms of the MIT License. All contributions are welcomed. Join our Github https://github.com/kerighan/kinbaku.
+Kinbaku is a free software; you can redistribute it and/or modify it under the terms of the MIT License. All contributions are welcomed. Join our Github https://github.com/kerighan/kinbaku.
 
 History
 -------

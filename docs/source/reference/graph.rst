@@ -41,6 +41,8 @@ Accessing nodes, edges and neighbors
    Graph.predecessors
    Graph.neighbors_from
    Graph.predecessors_from
+   Graph.common_neighbors
+   Graph.common_predecessors
    Graph.close
 
 
