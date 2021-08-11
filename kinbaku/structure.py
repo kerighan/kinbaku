@@ -75,6 +75,19 @@ class Node:
         txt += ", ".join(attr)
         txt += ")"
         return txt
+    
+    def view(self):
+        res = {}
+        for key, val in vars(self).items():
+            if key in {
+                "is_node", "exists", "hash", "left", "right", "index",
+                "position", "parent", "edge_start"
+            }:
+                continue
+            if isinstance(val, str) and len(val) == 0:
+                continue
+            res[key] =val
+        return res
 
 
 @dataclass

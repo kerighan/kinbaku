@@ -852,6 +852,18 @@ class Graph:
         for edge in self._edge_out_dfs(start):
             res = self._get_node_at(edge.target_position)
             yield res.key
+    
+    @lock
+    def neighbors_list(self, u):
+        """Thread-safe full neighborhood listing
+
+        Args:
+            u (str): key of the source node
+
+        Returns:
+            list: list of node keys
+        """
+        return list(self.neighbors(u))
 
     def neighbors_from(self, nodes, n_jobs=-1):
         """Returns the list of neighbors for all given nodes
@@ -868,7 +880,7 @@ class Graph:
         nbs = []
         # NOTE: not a oneliner as it would block multithreading
         for node in nodes:
-            nbs.append(list(self.neighbors(node)))
+            nbs.append(self.neighbors_list(node))
         return nbs
     
     def common_neighbors(self, u, v):
@@ -880,8 +892,8 @@ class Graph:
         Returns:
             set: the set of all common neighbors
         """
-        u_nbs = set(self.neighbors(u))
-        v_nbs = set(self.neighbors(v))
+        u_nbs = set(self.neighbors_list(u))
+        v_nbs = set(self.neighbors_list(v))
         return u_nbs.intersection(v_nbs)
 
     @lock
@@ -900,6 +912,18 @@ class Graph:
             res = self._get_node_at(edge.source_position)
             yield res.key
 
+    @lock
+    def predecessors_list(self, u):
+        """Thread-safe full predecessors listing
+
+        Args:
+            u (str): key of the source node
+
+        Returns:
+            list: list of node keys
+        """
+        return list(self.predecessors(u))
+
     def predecessors_from(self, nodes, n_jobs=-1):
         """Returns the list of predecessors for all given nodes
 
@@ -914,7 +938,7 @@ class Graph:
         nbs = []
         # NOTE: not a oneliner as it would block multithreading
         for node in nodes:
-            nbs.append(list(self.predecessors(node)))
+            nbs.append(self.predecessors_list(node))
         return nbs
 
     def common_predecessors(self, u, v):
@@ -926,10 +950,9 @@ class Graph:
         Returns:
             set: the set of all common predecessors
         """
-        u_nbs = set(self.predecessors(u))
-        v_nbs = set(self.predecessors(v))
+        u_nbs = set(self.predecessors_list(u))
+        v_nbs = set(self.predecessors_list(v))
         return u_nbs.intersection(v_nbs)
-
 
     @lock
     def out_degree(self, key):
@@ -1087,6 +1110,33 @@ class Graph:
         if weight is None:
             dtype = np.bool_
         A = csr_matrix((data, (xs, ys)), shape=(index, index), dtype=dtype)
+        return A, index_to_node
+
+    def subgraph(self, nodes, weight=None):
+        from scipy.sparse import csr_matrix
+        import numpy as np
+
+        index_to_node = dict(enumerate(set(nodes)))
+        node_to_index = {v: k for k, v in index_to_node.items()}
+        n_nodes = len(index_to_node)
+
+        xs = []
+        ys = []
+        data = []
+        for source in nodes:
+            source_id = node_to_index[source]
+            for target in self.neighbors_list(source):
+                target_id = node_to_index.get(target, None)
+                if target_id is None:
+                    continue
+                xs.append(source_id)
+                ys.append(target_id)
+                if weight is None:
+                    data.append(1)
+
+        if weight is None:
+            dtype = np.bool_
+        A = csr_matrix((data, (xs, ys)), shape=(n_nodes, n_nodes), dtype=dtype)
         return A, index_to_node
 
     # =========================================================================
