@@ -27,7 +27,7 @@ def node(u):
     # get node data
     if request.method == "GET":
         try:
-            return jsonify(G.node(u).view())
+            return jsonify(G.node(u).data())
         except kn.exception.NodeNotFound:
             return f"node {u} not found", 404
     # create node

@@ -46,6 +46,20 @@ class Edge:
         txt += ")"
         return txt
 
+    def data(self):
+        res = {}
+        for key, val in vars(self).items():
+            if key in {
+                "is_node", "exists", "is_edge_start", "position",
+                "source_position", "target_position", "hash", "out_edge_left",
+                "out_edge_parent", "out_edge_right", "in_edge_left",
+                "in_edge_right", "in_edge_parent", "type"
+            }:
+                continue
+            if isinstance(val, str) and len(val) == 0:
+                continue
+            res[key] =val
+        return res
 
 @dataclass
 class Node:
@@ -76,7 +90,7 @@ class Node:
         txt += ")"
         return txt
     
-    def view(self):
+    def data(self):
         res = {}
         for key, val in vars(self).items():
             if key in {
