@@ -1,3 +1,6 @@
+from functools import wraps
+
+
 def compare_nodes(node_A_hash, node_A_key, node_B):
     node_B_key = node_B.key
     if node_B_key < node_A_key:
@@ -65,8 +68,9 @@ def to_string(data):
     return u"".join(chr(c) for c in data if c != 0)
 
 
-def lock(func):
+def lock(f):
+    @wraps(f)
     def wrapper(*args, **kwargs):
         with args[0].lock:
-            return func(*args, **kwargs)
+            return f(*args, **kwargs)
     return wrapper
