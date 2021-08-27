@@ -39,6 +39,8 @@ Accessing nodes, edges and neighbors
    Graph.__contains__
    Graph.neighbors
    Graph.predecessors
+   Graph.set_neighbors
+   Graph.set_predecessors
    Graph.neighbors_from
    Graph.predecessors_from
    Graph.common_neighbors

@@ -5,15 +5,15 @@ Self-loops are allowed but multiple edges of a same edge type are not.
 import math
 import mmap
 import os
-from struct import error, pack, unpack
 import threading
+from struct import error, pack, unpack
 
 from cachetools import LRUCache
 
 from .exception import (EdgeNotFound, KinbakuError, KinbakuException,
                         NodeNotFound)
 from .structure import Edge, Header, Node, text
-from .utils import compare_edges, compare_nodes, to_string, lock
+from .utils import compare_edges, compare_nodes, lock, to_string
 
 
 class Graph:
@@ -282,7 +282,6 @@ class Graph:
     # File & memory management
     # =========================================================================
 
-    @lock
     def _load_file(self):
         if not os.path.exists(self.filename) or self.flag == "n":
             with open(self.filename, "wb") as f:
@@ -303,7 +302,6 @@ class Graph:
                 for _ in self.nodes:
                     pass
 
-    @lock
     def _map_to_memory(self):
         with open(self.filename, "r+b") as f:
             if self.flag == "w" or self.flag == "n":
@@ -311,7 +309,6 @@ class Graph:
             else:
                 self.mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
-    @lock
     def _expand(self):
         if (
             self.header.next_table_position
@@ -356,7 +353,6 @@ class Graph:
         self.header.n_nodes -= 1
         self._expand()
 
-    @lock
     def _cache_node(self, node):
         self.cache_key_to_pos[node.key] = node.position
         self.cache_id_to_key[node.index] = node.key
@@ -364,7 +360,6 @@ class Graph:
         self.cache_pos_to_node_tree[node.position] = (
             node.hash, node.left, node.right)
 
-    @lock
     def _uncache_node(self, node):
         try:
             del self.cache_key_to_pos[node.key]
@@ -429,7 +424,6 @@ class Graph:
                     continue
                 yield edge
 
-    @lock
     def _find_node_pos(self, position, new_node):
         # current_node = self._get_node_at(position)
         current_hash, current_left, current_right = (
@@ -467,7 +461,6 @@ class Graph:
         current_node = self._get_node_at(position)
         return current_node, state
 
-    @lock
     def _find_edge_out_pos(self, position, new_edge):
         current_edge = self._get_edge_at(position)
         while True:
@@ -490,7 +483,6 @@ class Graph:
                 break
         return current_edge, state
 
-    @lock
     def _find_edge_in_pos(self, position, new_edge):
         current_edge = self._get_edge_at(position)
         while True:
@@ -513,7 +505,6 @@ class Graph:
                 break
         return current_edge, state
 
-    @lock
     def _find_inorder_successor_edge(self, edge, out=True):
         edge_right = edge.out_edge_right if out else edge.in_edge_right
         left = "out_edge_left" if out else "in_edge_left"
@@ -524,7 +515,6 @@ class Graph:
             successor = self._get_edge_at(getattr(successor, left))
         return (successor, antecedent)
 
-    @lock
     def _find_inorder_successor_node(self, node):
         successor = self._get_node_at(node.right)
         antecedent = node
@@ -767,13 +757,11 @@ class Graph:
     # Getters
     # =========================================================================
 
-    @lock
     def _get_next_node_position(self):
         if len(self.node_tombstone) == 0:
             return self.header.next_table_position, False
         return self.node_tombstone.pop(0), True
 
-    @lock
     def _get_next_edge_position(self):
         if len(self.edge_tombstone) == 0:
             recycled = False
@@ -869,19 +857,27 @@ class Graph:
         for edge in self._edge_out_dfs(start):
             res = self._get_node_at(edge.target_position)
             yield res.key
-    
+
     @lock
-    def neighbors_list(self, u):
-        """Thread-safe full neighborhood listing
+    def set_neighbors(self, u, new_neighbors):
+        """Strictly assign predecessors to a node
 
         Args:
-            u (str): key of the source node
-
-        Returns:
-            list: list of node keys
+            v ([type]): key of the target node
+            new_predecessors: list or set of the sources key
         """
-        return list(self.neighbors(u))
+        self.add_node(u)
+        new_neighbors = set(new_neighbors)
+        old_neighbors = set(self.neighbors(u))
 
+        to_add = new_neighbors.difference(old_neighbors)
+        to_remove = old_neighbors.difference(new_neighbors)
+        for v in to_add:
+            self.add_edge(u, v)
+        for v in to_remove:
+            self.remove_edge(u, v)
+
+    @lock
     def neighbors_from(self, nodes, n_jobs=-1):
         """Returns the list of neighbors for all given nodes
 
@@ -899,7 +895,8 @@ class Graph:
         for node in nodes:
             nbs.append(self.neighbors_list(node))
         return nbs
-    
+
+    @lock
     def common_neighbors(self, u, v):
         """Returns the set of common neighbors between two nodes
 
@@ -930,17 +927,25 @@ class Graph:
             yield res.key
 
     @lock
-    def predecessors_list(self, u):
-        """Thread-safe full predecessors listing
+    def set_predecessors(self, v, new_predecessors):
+        """Strictly assign predecessors to a node
 
         Args:
-            u (str): key of the source node
-
-        Returns:
-            list: list of node keys
+            v ([type]): key of the target node
+            new_predecessors: list or set of the sources key
         """
-        return list(self.predecessors(u))
+        self.add_node(v)
+        new_predecessors = set(new_predecessors)
+        old_predecessors = set(self.predecessors(v))
 
+        to_add = new_predecessors.difference(old_predecessors)
+        to_remove = old_predecessors.difference(new_predecessors)
+        for u in to_add:
+            self.add_edge(u, v)
+        for u in to_remove:
+            self.remove_edge(u, v)
+
+    @lock
     def predecessors_from(self, nodes, n_jobs=-1):
         """Returns the list of predecessors for all given nodes
 
@@ -958,6 +963,7 @@ class Graph:
             nbs.append(self.predecessors_list(node))
         return nbs
 
+    @lock
     def common_predecessors(self, u, v):
         """Returns the set of common predecessors between two nodes
 
@@ -987,7 +993,7 @@ class Graph:
             count += 1
         return count
 
-    # @lock
+    @lock
     def node(self, key):
         """Get node from key
 
@@ -1026,7 +1032,7 @@ class Graph:
         else:
             raise NodeNotFound
 
-    # @lock
+    @lock
     def edge(self, source, target, edge_type=0):
         """Get edge from source, target and edge type
 
@@ -1059,7 +1065,7 @@ class Graph:
             return edge
         raise EdgeNotFound(f"Edge {source.key} -> {target.key} not found")
 
-    # @lock
+    @lock
     def has_edge(self, source, target, edge_type=0):
         """Returns True if (source, target[, edge_type]) exists
 
@@ -1077,7 +1083,7 @@ class Graph:
         except EdgeNotFound:
             return False
 
-    # @lock
+    @lock
     def has_node(self, node):
         """Returns True if node exists
 
@@ -1092,11 +1098,11 @@ class Graph:
             return True
         except NodeNotFound:
             return False
-    
+
     @lock
     def adjacency_matrix(self, weight=None):
-        from scipy.sparse import csr_matrix
         import numpy as np
+        from scipy.sparse import csr_matrix
 
         node_to_index = {}
         index_to_node = {}
@@ -1111,7 +1117,7 @@ class Graph:
                 index_to_node[index] = source
                 source_id = index
                 index += 1
-            
+
             target_id = node_to_index.get(target)
             if target_id is None:
                 node_to_index[target] = index
@@ -1130,8 +1136,8 @@ class Graph:
         return A, index_to_node
 
     def subgraph(self, nodes, weight=None):
-        from scipy.sparse import csr_matrix
         import numpy as np
+        from scipy.sparse import csr_matrix
 
         index_to_node = dict(enumerate(set(nodes)))
         node_to_index = {v: k for k, v in index_to_node.items()}
@@ -1204,14 +1210,12 @@ class Graph:
     # Setters
     # =========================================================================
 
-    @lock
     def _set_node_at(self, leaf, position):
         values = self._parse_values(leaf)
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         self.mm[ind: ind + self.NODE_SIZE] = pack(self.NODE_FORMAT, *values)
         self._cache_node(leaf)
 
-    @lock
     def _set_edge_at(self, edge, position):
         values = self._parse_values(edge)
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
@@ -1222,14 +1226,12 @@ class Graph:
             print(self.header.table_size, ind + self.EDGE_SIZE, ind)
             raise IndexError
 
-    @lock
     def _erase_edge_at(self, position):
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         self.mm[ind: ind + self.EDGE_SIZE] = self.EDGE
         self.edge_tombstone.append(position)
         self._decrement_edge()
 
-    @lock
     def _erase_node(self, node):
         self._uncache_node(node)
         ind = node.position * self.EDGE_SIZE + self.HEADER_SIZE
@@ -1447,6 +1449,7 @@ class Graph:
         self._remove_node_from_tree(source)
         self._erase_node(source)
 
+    @lock
     def __setitem__(self, key, attr):
         """Create/update node with custom attributes
 
