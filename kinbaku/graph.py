@@ -872,10 +872,10 @@ class Graph:
 
         to_add = new_neighbors.difference(old_neighbors)
         to_remove = old_neighbors.difference(new_neighbors)
-        for v in to_add:
-            self.add_edge(u, v)
         for v in to_remove:
             self.remove_edge(u, v)
+        for v in to_add:
+            self.add_edge(u, v)
 
     @lock
     def neighbors_from(self, nodes, n_jobs=-1):
@@ -940,10 +940,10 @@ class Graph:
 
         to_add = new_predecessors.difference(old_predecessors)
         to_remove = old_predecessors.difference(new_predecessors)
-        for u in to_add:
-            self.add_edge(u, v)
         for u in to_remove:
             self.remove_edge(u, v)
+        for u in to_add:
+            self.add_edge(u, v)
 
     @lock
     def predecessors_from(self, nodes, n_jobs=-1):
@@ -1009,6 +1009,7 @@ class Graph:
         # if key is already a node object
         if isinstance(key, self.node_class):
             return key
+        assert len(key) <= self.max_key_len
 
         # if key is in cache
         pos = self.cache_key_to_pos.get(key)
