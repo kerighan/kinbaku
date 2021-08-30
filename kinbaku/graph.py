@@ -283,6 +283,13 @@ class Graph:
     # =========================================================================
 
     def _load_file(self):
+        # create folder if it doesn't exist
+        if self.flag in {"n", "w"}:
+            folder = os.path.dirname(self.filename)
+            if folder != "" and not os.path.exists(folder):
+                os.makedirs(folder)
+
+        # initialize new file if it doesn't exist or flag is set to NEW
         if not os.path.exists(self.filename) or self.flag == "n":
             with open(self.filename, "wb") as f:
                 f.write(self.HEADER)
@@ -859,6 +866,22 @@ class Graph:
             yield res.key
 
     @lock
+    def predecessors(self, v):
+        """Iterate over all nodes u such that (u, v) is an edge
+
+        Args:
+            v ([type]): key of the target node
+
+        Yields:
+            iterator: iterator of node keys
+        """
+        leaf = self.node(v)
+        start = self._get_edge_at(leaf.edge_start)
+        for edge in self._edge_in_dfs(start):
+            res = self._get_node_at(edge.source_position)
+            yield res.key
+
+    @lock
     def set_neighbors(self, u, new_neighbors):
         """Strictly assign predecessors to a node
 
@@ -875,6 +898,25 @@ class Graph:
         for v in to_remove:
             self.remove_edge(u, v)
         for v in to_add:
+            self.add_edge(u, v)
+
+    @lock
+    def set_predecessors(self, v, new_predecessors):
+        """Strictly assign predecessors to a node
+
+        Args:
+            v ([type]): key of the target node
+            new_predecessors: list or set of the sources key
+        """
+        self.add_node(v)
+        new_predecessors = set(new_predecessors)
+        old_predecessors = set(self.predecessors(v))
+
+        to_add = new_predecessors.difference(old_predecessors)
+        to_remove = old_predecessors.difference(new_predecessors)
+        for u in to_remove:
+            self.remove_edge(u, v)
+        for u in to_add:
             self.add_edge(u, v)
 
     @lock
@@ -897,55 +939,6 @@ class Graph:
         return nbs
 
     @lock
-    def common_neighbors(self, u, v):
-        """Returns the set of common neighbors between two nodes
-
-        Args:
-            u (str): key of the first node
-            v (str): key of the second node
-        Returns:
-            set: the set of all common neighbors
-        """
-        u_nbs = set(self.neighbors_list(u))
-        v_nbs = set(self.neighbors_list(v))
-        return u_nbs.intersection(v_nbs)
-
-    @lock
-    def predecessors(self, v):
-        """Iterate over all nodes u such that (u, v) is an edge
-
-        Args:
-            v ([type]): key of the target node
-
-        Yields:
-            iterator: iterator of node keys
-        """
-        leaf = self.node(v)
-        start = self._get_edge_at(leaf.edge_start)
-        for edge in self._edge_in_dfs(start):
-            res = self._get_node_at(edge.source_position)
-            yield res.key
-
-    @lock
-    def set_predecessors(self, v, new_predecessors):
-        """Strictly assign predecessors to a node
-
-        Args:
-            v ([type]): key of the target node
-            new_predecessors: list or set of the sources key
-        """
-        self.add_node(v)
-        new_predecessors = set(new_predecessors)
-        old_predecessors = set(self.predecessors(v))
-
-        to_add = new_predecessors.difference(old_predecessors)
-        to_remove = old_predecessors.difference(new_predecessors)
-        for u in to_remove:
-            self.remove_edge(u, v)
-        for u in to_add:
-            self.add_edge(u, v)
-
-    @lock
     def predecessors_from(self, nodes, n_jobs=-1):
         """Returns the list of predecessors for all given nodes
 
@@ -962,6 +955,20 @@ class Graph:
         for node in nodes:
             nbs.append(self.predecessors_list(node))
         return nbs
+
+    @lock
+    def common_neighbors(self, u, v):
+        """Returns the set of common neighbors between two nodes
+
+        Args:
+            u (str): key of the first node
+            v (str): key of the second node
+        Returns:
+            set: the set of all common neighbors
+        """
+        u_nbs = set(self.neighbors_list(u))
+        v_nbs = set(self.neighbors_list(v))
+        return u_nbs.intersection(v_nbs)
 
     @lock
     def common_predecessors(self, u, v):
@@ -1067,6 +1074,22 @@ class Graph:
         raise EdgeNotFound(f"Edge {source.key} -> {target.key} not found")
 
     @lock
+    def has_node(self, node):
+        """Returns True if node exists
+
+        Args:
+            node (str): string key of the node
+
+        Returns:
+            bool: True if node exists, False otherwise
+        """
+        try:
+            self.node(node)
+            return True
+        except NodeNotFound:
+            return False
+
+    @lock
     def has_edge(self, source, target, edge_type=0):
         """Returns True if (source, target[, edge_type]) exists
 
@@ -1085,23 +1108,86 @@ class Graph:
             return False
 
     @lock
-    def has_node(self, node):
-        """Returns True if node exists
+    def batch_get_nodes(self, batch_size=100, cursor=0):
+        """Get a batch of nodes starting from a given table position
 
         Args:
-            node (str): string key of the node
+            batch_size (int): number of nodes to return per batch
+            cursor (int): starting position in the table
 
         Returns:
-            bool: True if node exists, False otherwise
+            list[node_class]: list of nodes
+            int: cursor for the next batch. Equals -1 if the end is reached
         """
-        try:
-            self.node(node)
-            return True
-        except NodeNotFound:
-            return False
+        position = cursor
+        n_nodes = 0
+        nodes = []
+        while (position <= self.header.next_table_position and
+               n_nodes < batch_size
+               ):
+            ind = position * self.EDGE_SIZE + self.HEADER_SIZE
+            is_node, exists = unpack("??", self.mm[ind: ind + 2])
+            if is_node:
+                if not exists or position == 0:
+                    position += self.NODE_TO_EDGE_RATIO
+                    continue
+                node = self._get_node_at(position)
+                nodes.append(node)
+                position += self.NODE_TO_EDGE_RATIO
+                n_nodes += 1
+            else:
+                position += 1
+        if position > self.header.next_table_position:
+            position = -1
+        return nodes, position
+
+    @lock
+    def batch_get_edges(self, batch_size=100, cursor=0):
+        """Get a batch of edges starting from a given table position
+
+        Args:
+            batch_size (int): number of edges to return per batch
+            cursor (int): starting position in the table
+
+        Returns:
+            list[tuple]: list of edges (tuple of str)
+            int: cursor for the next batch. Equals -1 if the end is reached
+        """
+        position = cursor
+        n_edges = 0
+        edges = []
+        while (position <= self.header.next_table_position and
+               n_edges < batch_size
+               ):
+            ind = position * self.EDGE_SIZE + self.HEADER_SIZE
+            is_node, exists = unpack("??", self.mm[ind: ind + 2])
+            if is_node:
+                position += self.NODE_TO_EDGE_RATIO
+            else:
+                if not exists:
+                    position += 1
+                    continue
+
+                edge = self._get_edge_at(position)
+                position += 1
+                if edge.is_edge_start:
+                    continue
+                edges.append(self._get_keys_from_edge(edge))
+                n_edges += 1
+        if position > self.header.next_table_position:
+            position = -1
+        return edges, position
 
     @lock
     def adjacency_matrix(self, weight=None):
+        """Return adjacency matrix of the graph
+
+        Args:
+            weight (str): NOT IMPLEMENTED! Weight attribute
+
+        Returns:
+            scipy.sparse.csr_matrix: sparse matrix representing the graph
+        """
         import numpy as np
         from scipy.sparse import csr_matrix
 
@@ -1137,6 +1223,15 @@ class Graph:
         return A, index_to_node
 
     def subgraph(self, nodes, weight=None):
+        """Return adjacency matrix of a given graph
+
+        Args:
+            nodes (list): subset of nodes to consider for the subgraph
+            weight (str): NOT IMPLEMENTED! Weight attribute
+
+        Returns:
+            scipy.sparse.csr_matrix: sparse matrix representing the subgraph
+        """
         import numpy as np
         from scipy.sparse import csr_matrix
 

@@ -36,6 +36,8 @@ Accessing nodes, edges and neighbors
    Graph.edges
    Graph.has_node
    Graph.has_edge
+   Graph.batch_get_nodes
+   Graph.batch_get_edges
    Graph.__contains__
    Graph.neighbors
    Graph.predecessors
@@ -45,6 +47,8 @@ Accessing nodes, edges and neighbors
    Graph.predecessors_from
    Graph.common_neighbors
    Graph.common_predecessors
+   Graph.adjacency_matrix
+   Graph.subgraph
    Graph.close
 
 
