@@ -2,7 +2,7 @@ import kinbaku as kn
 import networkx as nx
 
 G = kn.Graph("test.db", flag="n")
-G_nx = nx.cycle_graph(100)
+G_nx = nx.cycle_graph(5000)
 
 for u, v in G_nx.edges:
     u = str(u)

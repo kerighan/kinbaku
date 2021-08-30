@@ -920,22 +920,18 @@ class Graph:
             self.add_edge(u, v)
 
     @lock
-    def neighbors_from(self, nodes, n_jobs=-1):
+    def neighbors_from(self, nodes):
         """Returns the list of neighbors for all given nodes
 
         Args:
             nodes (list): list of node keys
-            n_jobs (int, optional): The number of cpus to use. All available
-                                    cpus are used if n_jobs==-1.
-                                    Defaults to -1.
-                                    NOT IMPLEMENTED YET
         Returns:
             dict: a dict mapping node keys to the list of their neighbors
         """
         nbs = []
         # NOTE: not a oneliner as it would block multithreading
         for node in nodes:
-            nbs.append(self.neighbors_list(node))
+            nbs.append(self.neighbors(node))
         return nbs
 
     @lock
@@ -953,7 +949,7 @@ class Graph:
         nbs = []
         # NOTE: not a oneliner as it would block multithreading
         for node in nodes:
-            nbs.append(self.predecessors_list(node))
+            nbs.append(self.predecessors(node))
         return nbs
 
     @lock
@@ -966,8 +962,8 @@ class Graph:
         Returns:
             set: the set of all common neighbors
         """
-        u_nbs = set(self.neighbors_list(u))
-        v_nbs = set(self.neighbors_list(v))
+        u_nbs = set(self.neighbors(u))
+        v_nbs = set(self.neighbors(v))
         return u_nbs.intersection(v_nbs)
 
     @lock
@@ -980,8 +976,8 @@ class Graph:
         Returns:
             set: the set of all common predecessors
         """
-        u_nbs = set(self.predecessors_list(u))
-        v_nbs = set(self.predecessors_list(v))
+        u_nbs = set(self.predecessors(u))
+        v_nbs = set(self.predecessors(v))
         return u_nbs.intersection(v_nbs)
 
     @lock
@@ -1244,7 +1240,7 @@ class Graph:
         data = []
         for source in nodes:
             source_id = node_to_index[source]
-            for target in self.neighbors_list(source):
+            for target in self.neighbors(source):
                 target_id = node_to_index.get(target, None)
                 if target_id is None:
                     continue
