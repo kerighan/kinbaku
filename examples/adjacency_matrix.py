@@ -1,6 +1,5 @@
 import random
 import time
-from operator import index
 
 import kinbaku as kn
 from tqdm import tqdm
