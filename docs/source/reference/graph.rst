@@ -47,12 +47,14 @@ Accessing nodes, edges and neighbors
    Graph.predecessors_from
    Graph.common_neighbors
    Graph.common_predecessors
-   Graph.adjacency_matrix
-   Graph.subgraph
    Graph.close
 
 
 Linear Algebra
 --------------
 
-coming soon
+.. autosummary::
+   :toctree: generated/
+
+   Graph.adjacency_matrix
+   Graph.subgraph

@@ -1219,7 +1219,7 @@ class Graph:
         return A, index_to_node
 
     def subgraph(self, nodes, weight=None):
-        """Return adjacency matrix of a given graph
+        """Return adjacency matrix of a subgraph
 
         Args:
             nodes (list): subset of nodes to consider for the subgraph
