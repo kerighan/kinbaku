@@ -104,6 +104,7 @@ class Graph:
         self.cache_key_to_pos = LRUCache(cache_len)
         self.cache_pos_to_node = LRUCache(cache_len)
         self.cache_pos_to_node_tree = LRUCache(cache_len)
+        self.cache_pos_to_edge = LRUCache(cache_len)
 
         self.edge_tombstone = []
         self.node_tombstone = []
@@ -361,6 +362,9 @@ class Graph:
         self.cache_pos_to_node[npos] = node
         self.cache_pos_to_node_tree[npos] = (nhash, nleft, nright)
 
+    def _cache_edge(self, edge, position):
+        self.cache_pos_to_edge[position] = edge
+
     def _uncache_node(self, node):
         npos = node.position
         try:
@@ -377,6 +381,12 @@ class Graph:
             pass
         try:
             del self.cache_pos_to_node_tree[npos]
+        except KeyError:
+            pass
+
+    def _uncache_edge(self, edge):
+        try:
+            del self.cache_pos_to_edge[edge.position]
         except KeyError:
             pass
 
@@ -828,6 +838,10 @@ class Graph:
         return node
 
     def _get_edge_at(self, position):
+        edge = self.cache_pos_to_edge.get(position)
+        if edge is not None:
+            return edge
+
         ind = position * self.EDGE_SIZE + self.HEADER_SIZE
         data = unpack(self.EDGE_FORMAT, self.mm[ind: ind + self.EDGE_SIZE])
         edge = self.edge_class(*data)
@@ -1324,6 +1338,7 @@ class Graph:
         try:
             self.mm[ind: ind + self.EDGE_SIZE] = pack(
                 self.EDGE_FORMAT, *values)
+            self._cache_edge(edge, position)
         except IndexError:
             print(self.header.table_size, ind + self.EDGE_SIZE, ind)
             raise IndexError
@@ -1539,6 +1554,7 @@ class Graph:
         self._remove_edge_from_tree(edge, out=True)
         self._remove_edge_from_tree(edge, out=False)
         self._erase_edge_at(edge.position)
+        self._uncache_edge(edge)
 
     def remove_node(self, key):
         """Remove node and incident edges from graph
