@@ -6,7 +6,7 @@ updating and accessing large graphs directly on disk.
 See https://kinbaku.readthedocs.io/en/latest/ for complete documentation.
 """
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 from .graph import Graph
 
