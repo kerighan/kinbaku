@@ -25,3 +25,7 @@ class NodeNotFound(KinbakuException):
 
 class EdgeNotFound(KinbakuException):
     """Exception raised if requested edge does not exist."""
+
+
+class KeyTooLong(KinbakuException):
+    """Exception raised if node's key is too long."""
